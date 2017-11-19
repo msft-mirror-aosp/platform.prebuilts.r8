@@ -53,8 +53,6 @@ if [ ! -r "$libdir/$jarfile" ]; then
     exit 1
 fi
 
-echo $progdir
-
 # By default, give r8 a max heap size of 1 gig. This can be overridden
 # by using a "-J" option (see below).
 defaultMx="-Xmx1024M"
