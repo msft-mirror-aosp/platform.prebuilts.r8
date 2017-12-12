@@ -52,12 +52,6 @@ Summary of distributed libraries:
   license: The MIT License
   licenseUrl: http://www.opensource.org/licenses/mit-license.php
   url: http://pholser.github.com/jopt-simple
-- artifact: org.apache.commons:commons-compress:+
-  name: Apache Commons Compress
-  copyrightHolder: The Apache Software Foundation
-  license: The Apache Software License, Version 2.0
-  licenseUrl: http://www.apache.org/licenses/LICENSE-2.0.txt
-  url: http://commons.apache.org/proper/commons-compress/
 - artifact: org.ow2.asm:asm-commons:+
   name: ASM Commons
   copyrightHolder: INRIA, France Telecom
@@ -71,6 +65,12 @@ Summary of distributed libraries:
   licenseUrl: http://asm.ow2.org/license.html
   url: http://asm.ow2.org/index.html
 - artifact: org.ow2.asm:asm-util:+
+  name: ASM Util
+  copyrightHolder: INRIA, France Telecom
+  license: ASM license
+  licenseUrl: http://asm.ow2.org/license.html
+  url: http://asm.ow2.org/index.html
+- artifact: org.ow2.asm:asm-analysis:+
   name: ASM Util
   copyrightHolder: INRIA, France Telecom
   license: ASM license
