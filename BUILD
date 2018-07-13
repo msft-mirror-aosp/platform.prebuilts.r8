@@ -1,7 +1,10 @@
 java_import(
     name = "d8-master",
     jars = ["d8-master.jar"],
-    visibility = ["//tools/base/build-system/builder:__pkg__"],
+    visibility = [
+        "//tools/base/build-system/builder:__pkg__",
+        "//tools/base/deploy/swapper:__pkg__",
+    ],
 )
 
 java_binary(
