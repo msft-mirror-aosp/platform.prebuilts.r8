@@ -53,9 +53,9 @@ if [ ! -r "$libdir/$jarfile" ]; then
     exit 1
 fi
 
-# By default, give d8 a max heap size of 1 gig. This can be overridden
+# By default, give d8 a max heap size of 2 gigs. This can be overridden
 # by using a "-J" option (see below).
-defaultMx="-Xmx1024M"
+defaultMx="-Xmx2G"
 
 # The following will extract any initial parameters of the form
 # "-J<stuff>" from the command line and pass them to the Java
