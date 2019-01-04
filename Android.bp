@@ -1,7 +1,7 @@
 java_binary_host {
     name: "d8",
     wrapper: "d8",
-    static_libs: [ "d8-master" ],
+    static_libs: [ "r8-master" ],
 }
 
 java_binary_host {
@@ -17,8 +17,8 @@ java_binary_host {
 }
 
 java_import_host {
-  name: "d8-master",
-  jars: ["d8-master.jar"],
+  name: "r8-master",
+  jars: ["r8-master.jar"],
 }
 
 java_import_host {
