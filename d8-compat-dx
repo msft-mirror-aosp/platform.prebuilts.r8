@@ -86,4 +86,4 @@ else
     jarpath="$libdir/$jarfile"
 fi
 
-exec java "${javaOpts[@]}" -cp "$jarpath" com.android.tools.r8.compatdx.CompatDx "$@"
+exec java $javaOpts -jar "$jarpath" "$@"
