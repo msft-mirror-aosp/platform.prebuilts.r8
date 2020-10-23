@@ -16,19 +16,3 @@ java_binary(
     visibility = ["//visibility:public"],
     runtime_deps = [":r8"],
 )
-
-# managed by go/iml_to_build [unb]
-java_import(
-    name = "unb.r8",
-    jars = ["r8.jar"],
-    tags = [
-        "manual",
-        "unb",
-    ],
-    visibility = [
-        "//tools/base/build-system/builder:__pkg__",
-        "//tools/base/deploy/deployer:__pkg__",
-        "//tools/base/deploy/test:__pkg__",
-        "//tools/base/sdklib:__pkg__",
-    ],
-)
