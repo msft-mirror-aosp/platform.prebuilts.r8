@@ -3,6 +3,7 @@ java_import(
     name = "r8",
     jars = ["r8.jar"],
     visibility = [
+        "//tools/adt/idea/studio:__pkg__",
         "//tools/base/build-system/builder:__pkg__",
         "//tools/base/deploy/deployer:__pkg__",
         "//tools/base/deploy/test:__pkg__",
