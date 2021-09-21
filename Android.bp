@@ -39,16 +39,27 @@ license {
 java_binary_host {
     name: "d8",
     wrapper: "d8",
-    static_libs: [ "r8" ],
+    static_libs: ["r8"],
+    target: {
+        windows: {
+            enabled: true,
+            wrapper: "d8.bat",
+        },
+    },
 }
 
 java_binary_host {
     name: "r8-compat-proguard",
     wrapper: "r8-compat-proguard",
-    static_libs: [ "r8" ],
+    static_libs: ["r8"],
 }
 
 java_import_host {
-  name: "r8",
-  jars: ["r8.jar"],
+    name: "r8",
+    jars: ["r8.jar"],
+    target: {
+        windows: {
+            enabled: true,
+        },
+    },
 }
