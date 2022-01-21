@@ -1,5 +1,7 @@
+load("//tools/base/bazel:jvm_import.bzl", "jvm_import")
+
 # managed by go/iml_to_build
-java_import(
+jvm_import(
     name = "r8",
     jars = ["r8.jar"],
     visibility = [
