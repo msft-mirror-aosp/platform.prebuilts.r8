@@ -1,18 +1,3 @@
-//
-// Copyright (C) 2021 The Android Open Source Project
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package {
     default_applicable_licenses: ["prebuilts_r8_license"],
 }
@@ -54,40 +39,16 @@ license {
 java_binary_host {
     name: "d8",
     wrapper: "d8",
-    static_libs: ["r8"],
-    target: {
-        windows: {
-            enabled: true,
-            wrapper: "d8.bat",
-        },
-    },
+    static_libs: [ "r8" ],
 }
 
 java_binary_host {
     name: "r8-compat-proguard",
     wrapper: "r8-compat-proguard",
-    static_libs: ["r8"],
-}
-
-java_binary_host {
-    name: "retrace",
-    main_class: "com.android.tools.r8.retrace.RetraceWrapper",
-    srcs: ["src/com/android/tools/r8/retrace/RetraceWrapper.java"],
-    static_libs: ["r8"],
-}
-
-java_binary_host {
-    name: "extractmarker",
-    main_class: "com.android.tools.r8.ExtractMarker",
-    static_libs: ["r8"],
+    static_libs: [ "r8" ],
 }
 
 java_import_host {
-    name: "r8",
-    jars: ["r8.jar"],
-    target: {
-        windows: {
-            enabled: true,
-        },
-    },
+  name: "r8",
+  jars: ["r8.jar"],
 }
