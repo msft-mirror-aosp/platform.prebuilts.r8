@@ -42,11 +42,17 @@ progdir=`pwd`
 prog="${progdir}"/`basename "${prog}"`
 cd "${oldwd}"
 
-retracedir="${progdir}"
-retracejar="r8.jar"
+retracedir="${progdir}/retrace"
+retracejar="retrace.jar"
+proguardjar="proguard.jar"
 
 if [ ! -r "${retracedir}/${retracejar}" ]; then
     echo `basename "$prog"`": can't find ${retracejar}"
+    exit 1
+fi
+
+if [ ! -r "${retracedir}/${proguardjar}" ]; then
+    echo `basename "$prog"`": can't find ${proguardjar}"
     exit 1
 fi
 
@@ -66,4 +72,4 @@ else
     retracepath="${retracedir}/${retracejar}"
 fi
 
-exec java -cp "${retracepath}" com.android.tools.r8.retrace.Retrace "${mappath}" "$@"
+exec java -jar "${retracepath}" "${mappath}" "$@"
