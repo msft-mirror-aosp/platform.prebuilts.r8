@@ -1,3 +1,4 @@
 third_party {
-  license_type: NOTICE
+  # would be NOTICE save for GPL in retrace/license.html
+  license_type: RESTRICTED
 }
