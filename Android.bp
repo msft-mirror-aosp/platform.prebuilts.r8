@@ -54,7 +54,7 @@ license {
 java_binary_host {
     name: "d8",
     wrapper: "d8",
-    static_libs: ["r8"],
+    static_libs: ["r8lib"],
     target: {
         windows: {
             enabled: true,
@@ -66,24 +66,30 @@ java_binary_host {
 java_binary_host {
     name: "r8-compat-proguard",
     wrapper: "r8-compat-proguard",
-    static_libs: ["r8"],
+    static_libs: ["r8lib"],
+}
+
+java_binary_host {
+    name: "r8",
+    main_class: "com.android.tools.r8.R8",
+    static_libs: ["r8lib"]
 }
 
 java_binary_host {
     name: "retrace",
     main_class: "com.android.tools.r8.retrace.RetraceWrapper",
     srcs: ["src/com/android/tools/r8/retrace/RetraceWrapper.java"],
-    static_libs: ["r8"],
+    static_libs: ["r8lib"],
 }
 
 java_binary_host {
     name: "extractmarker",
     main_class: "com.android.tools.r8.ExtractMarker",
-    static_libs: ["r8"],
+    static_libs: ["r8lib"],
 }
 
 java_import_host {
-    name: "r8",
+    name: "r8lib",
     jars: ["r8.jar"],
     target: {
         windows: {
