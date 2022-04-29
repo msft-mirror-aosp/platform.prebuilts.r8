@@ -53,7 +53,7 @@ license {
 
 java_binary_host {
     name: "d8",
-    wrapper: "d8",
+    main_class: "com.android.tools.r8.D8",
     static_libs: ["r8lib"],
     target: {
         windows: {
@@ -65,7 +65,7 @@ java_binary_host {
 
 java_binary_host {
     name: "r8-compat-proguard",
-    wrapper: "r8-compat-proguard",
+    main_class: "com.android.tools.r8.compatproguard.CompatProguard",
     static_libs: ["r8lib"],
 }
 
