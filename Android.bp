@@ -77,8 +77,8 @@ java_binary_host {
 
 java_binary_host {
     name: "retrace",
-    main_class: "com.android.tools.r8.retrace.RetraceWrapper",
-    srcs: ["src/com/android/tools/r8/retrace/RetraceWrapper.java"],
+    main_class: "com.android.tools.r8wrappers.retrace.RetraceWrapper",
+    srcs: ["src/com/android/tools/r8wrappers/retrace/RetraceWrapper.java"],
     static_libs: ["r8lib"],
 }
 
