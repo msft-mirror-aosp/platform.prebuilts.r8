@@ -14,12 +14,18 @@
  * limitations under the License.
  */
 
-package com.android.tools.r8.retrace;
+package com.android.tools.r8wrappers.retrace;
 
 import com.android.tools.r8.Diagnostic;
 import com.android.tools.r8.DiagnosticsHandler;
 import com.android.tools.r8.references.ClassReference;
 import com.android.tools.r8.references.Reference;
+import com.android.tools.r8.retrace.InvalidMappingFileException;
+import com.android.tools.r8.retrace.ProguardMapProducer;
+import com.android.tools.r8.retrace.RetraceStackTraceContext;
+import com.android.tools.r8.retrace.RetracedClassReference;
+import com.android.tools.r8.retrace.RetracedMethodReference;
+import com.android.tools.r8.retrace.Retracer;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
