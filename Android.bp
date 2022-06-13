@@ -71,7 +71,11 @@ java_binary_host {
 
 java_binary_host {
     name: "r8",
-    main_class: "com.android.tools.r8.R8",
+    main_class: "com.android.tools.r8wrappers.R8Wrapper",
+    srcs: [
+      "src/com/android/tools/r8wrappers/R8Wrapper.java",
+      "src/com/android/tools/r8wrappers/utils/*.java",
+    ],
     static_libs: ["r8lib"]
 }
 
