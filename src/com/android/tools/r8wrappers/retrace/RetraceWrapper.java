@@ -20,7 +20,6 @@ import com.android.tools.r8.Diagnostic;
 import com.android.tools.r8.DiagnosticsHandler;
 import com.android.tools.r8.references.ClassReference;
 import com.android.tools.r8.references.Reference;
-import com.android.tools.r8.retrace.InvalidMappingFileException;
 import com.android.tools.r8.retrace.ProguardMapProducer;
 import com.android.tools.r8.retrace.RetraceStackTraceContext;
 import com.android.tools.r8.retrace.RetracedClassReference;
@@ -39,13 +38,16 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class RetraceWrapper {
@@ -59,11 +61,17 @@ public class RetraceWrapper {
           System.lineSeparator(),
           "Usage: retrace [<option>]* [<file>]",
           "where <file> is the file to retrace (default stdin)",
-          "  and <option> is one of:",
+          "and for retracing build server artifacts <option>s are:",
+          "  --bid <build id>         # Build identifier, e.g., 1234 or P1234",
+          "  --target <target>        # Build target name, e.g., coral-userdebug",
+          "  --branch <branch>        # Branch, e.g., master (only needed when bid is not a build"
+              + " number)",
+          "or for retracing local builds <option>s are:",
           "  --default-map <file>     # Default map to retrace lines that don't auto-identify.",
           "  --map-search-path <path> # Path to search for mappings that support auto-identify.",
           "                           # Separate <path> entries by colon ':'.",
           "                           # Default '" + String.join(":", AOSP_MAP_SEARCH_PATHS) + "'.",
+          "other supported <option>s are:",
           "  --print-map-table        # Print the table of identified mapping files and exit.",
           "  -h, --help               # Print this message.");
 
@@ -84,28 +92,91 @@ public class RetraceWrapper {
     }
   }
 
-  private static class LazyRetracer {
+  private interface LazyRetracer {
+    String getMapLocation();
+
+    Retracer getRetracer(Path tempDir) throws Exception;
+  }
+
+  private static class LocalLazyRetracer implements LazyRetracer {
     final MapInfo mapInfo;
     final Path mapPath;
 
     private Retracer lazyRetracer = null;
 
-    public LazyRetracer(MapInfo mapInfo, Path mapPath) {
+    public LocalLazyRetracer(MapInfo mapInfo, Path mapPath) {
       this.mapInfo = mapInfo;
       this.mapPath = mapPath;
     }
 
-    public Retracer getRetracer() {
+    @Override
+    public String getMapLocation() {
+      return mapPath.toString();
+    }
+
+    @Override
+    public Retracer getRetracer(Path tempDir) throws Exception {
       if (lazyRetracer == null) {
-        try {
-          lazyRetracer =
-              Retracer.createDefault(
-                  ProguardMapProducer.fromPath(mapPath), new ForwardingDiagnosticsHander());
-        } catch (InvalidMappingFileException e) {
-          throw new RuntimeException("Failure in mapping file: " + mapPath, e);
-        }
+        lazyRetracer =
+            Retracer.createDefault(
+                ProguardMapProducer.fromPath(mapPath), new ForwardingDiagnosticsHander());
       }
       return lazyRetracer;
+    }
+  }
+
+  private static class RemoteLazyRetracer implements LazyRetracer {
+
+    private final MapInfo mapInfo;
+    private final BuildInfo buildInfo;
+    private final String zipEntry;
+
+    public RemoteLazyRetracer(MapInfo mapInfo, BuildInfo buildInfo, String zipEntry) {
+      this.mapInfo = mapInfo;
+      this.buildInfo = buildInfo;
+      this.zipEntry = zipEntry;
+    }
+
+    private Retracer lazyRetracer = null;
+
+    @Override
+    public String getMapLocation() {
+      return String.join(
+          " ", fetchArtifactCommand(buildInfo, getMappingFileArtifact(buildInfo), zipEntry));
+    }
+
+    @Override
+    public Retracer getRetracer(Path tempDir) throws IOException, InterruptedException {
+      if (lazyRetracer == null) {
+        Path mapFile =
+            fetchArtifact(buildInfo, getMappingFileArtifact(buildInfo), zipEntry, tempDir);
+        lazyRetracer =
+            Retracer.createDefault(
+                ProguardMapProducer.fromPath(mapFile), new ForwardingDiagnosticsHander());
+      }
+      return lazyRetracer;
+    }
+  }
+
+  private static class BuildInfo {
+    final String id;
+    final String target;
+    final String branch;
+
+    public BuildInfo(String id, String target, String branch) {
+      this.id = id;
+      this.target = target;
+      this.branch = branch;
+    }
+
+    public String getTargetWithoutBuildType() {
+      int lastDash = target.lastIndexOf('-');
+      return target.substring(0, lastDash);
+    }
+
+    @Override
+    public String toString() {
+      return "bid=" + id + ", target=" + target + (branch == null ? "" : ", branch=" + branch);
     }
   }
 
@@ -445,7 +516,8 @@ public class RetraceWrapper {
     frames.forEach(frame -> System.out.println(frame.line));
   }
 
-  private static void retrace(InputStream stream, LazyRetracer defaultRetracer) throws Exception {
+  private static void retrace(InputStream stream, LazyRetracer defaultRetracer, Path tempDir)
+      throws Exception {
     BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
     String currentLine = reader.readLine();
     List<FrameLine> frames = new ArrayList<>();
@@ -477,13 +549,12 @@ public class RetraceWrapper {
         currentLine = reader.readLine();
         frame = currentLine == null ? null : tryParseFrameLine(currentLine);
       }
-      retraceStackTrace(defaultRetracer, exceptionLine, frames);
+      retraceStackTrace(defaultRetracer, exceptionLine, frames, tempDir);
       frames.clear();
     }
   }
 
-  private static LazyRetracer determineRetracer(String sourceFile, LazyRetracer defaultRetracer)
-      throws Exception {
+  private static LazyRetracer determineRetracer(String sourceFile, LazyRetracer defaultRetracer) {
     LazyRetracer lazyRetracer = getRetracerForR8(sourceFile);
     if (lazyRetracer != null) {
       return lazyRetracer;
@@ -496,7 +567,10 @@ public class RetraceWrapper {
   }
 
   private static void retraceStackTrace(
-      LazyRetracer defaultRetracer, ExceptionLine exceptionLine, List<FrameLine> frames)
+      LazyRetracer defaultRetracer,
+      ExceptionLine exceptionLine,
+      List<FrameLine> frames,
+      Path tempDir)
       throws Exception {
     String sourceFile = frames.get(0).sourceFile;
     LazyRetracer lazyRetracer = determineRetracer(sourceFile, defaultRetracer);
@@ -504,7 +578,7 @@ public class RetraceWrapper {
       printIdentityStackTrace(exceptionLine, frames);
       return;
     }
-    Retracer retracer = lazyRetracer.getRetracer();
+    Retracer retracer = lazyRetracer.getRetracer(tempDir);
     List<ResultNode> finalResultNodes = new ArrayList<>();
     retraceOptionalExceptionLine(
         retracer,
@@ -520,7 +594,7 @@ public class RetraceWrapper {
               + " ambiguous stacks separated by <OR>.\n"
               + "If this is unexpected, please file a bug on R8 and attach the "
               + "content of the raw stack trace and the mapping file: "
-              + lazyRetracer.mapPath
+              + lazyRetracer.getMapLocation()
               + "\nPublic tracker at https://issuetracker.google.com/issues/new?component=326788");
     }
     for (int i = 0; i < finalResultNodes.size(); i++) {
@@ -610,7 +684,7 @@ public class RetraceWrapper {
             });
   }
 
-  private static void populateMappingFileMap(List<String> searchPaths) throws Exception {
+  private static void populateLocalMappingFileMap(List<String> searchPaths) throws Exception {
     Path projectRoot = getProjectRoot();
     if (projectRoot == null) {
       return;
@@ -620,7 +694,8 @@ public class RetraceWrapper {
     if (prebuiltR8MapInfo == null) {
       info("Unable to read expected prebuilt R8 map in " + prebuiltR8MapPath);
     } else {
-      RETRACERS.put(prebuiltR8MapInfo.id, new LazyRetracer(prebuiltR8MapInfo, prebuiltR8MapPath));
+      RETRACERS.put(
+          prebuiltR8MapInfo.id, new LocalLazyRetracer(prebuiltR8MapInfo, prebuiltR8MapPath));
     }
     for (String path : searchPaths) {
       Path resolvedPath = projectRoot.resolve(Paths.get(path));
@@ -644,7 +719,7 @@ public class RetraceWrapper {
               if (file.endsWith(mapFileName)) {
                 MapInfo mapInfo = readMapHeaderInfo(file);
                 if (mapInfo != null) {
-                  RETRACERS.put(mapInfo.id, new LazyRetracer(mapInfo, file));
+                  RETRACERS.put(mapInfo.id, new LocalLazyRetracer(mapInfo, file));
                 }
               }
               return FileVisitResult.CONTINUE;
@@ -663,7 +738,143 @@ public class RetraceWrapper {
     }
   }
 
+  private static void populateRemoteMappingFileMap(BuildInfo buildInfo, Path tempDir)
+      throws IOException, InterruptedException {
+    ensureFetchArtifactCommand();
+    Path mappings = fetchArtifact(buildInfo, getMappingFileMapping(buildInfo), null, tempDir);
+    List<String> lines = Files.readAllLines(mappings);
+    for (int i = 0; i < lines.size(); i++) {
+      String line = lines.get(i).trim();
+      if (line.startsWith("mappings:") && line.endsWith("{")) {
+        String id = null;
+        String location = null;
+        String type = null;
+        int j = i + 1;
+        while (j < lines.size()) {
+          String subline = lines.get(j++).trim();
+          if (subline.startsWith("}")) {
+            break;
+          }
+          if (subline.startsWith("identifier:")) {
+            id = getQuotedString(subline);
+          } else if (subline.startsWith("location:")) {
+            location = getQuotedString(subline);
+          } else if (subline.startsWith("type:")) {
+            type = subline.substring(5).trim();
+          } else {
+            throw error("no match");
+          }
+        }
+
+        if (id != null
+            && location != null
+            && type != null
+            && type.equals("R8")
+            && id.length() == 64) {
+          MapInfo mapInfo = new MapInfo(id, id);
+          RETRACERS.put(id, new RemoteLazyRetracer(mapInfo, buildInfo, location));
+        } else {
+          List<String> message = new ArrayList<>();
+          message.add("Invalid mapping entry starting at line " + i + ":");
+          for (int k = i; k < j; k++) {
+            message.add(lines.get(k));
+          }
+          throw error(String.join(System.lineSeparator(), message));
+        }
+      }
+    }
+  }
+
+  private static String getQuotedString(String line) {
+    return line.substring(line.indexOf('"') + 1, line.lastIndexOf('"'));
+  }
+
+  private static String getMappingFileMapping(BuildInfo buildInfo) {
+    return buildInfo.getTargetWithoutBuildType()
+        + "-proguard-dict-mapping-"
+        + buildInfo.id
+        + ".textproto";
+  }
+
+  private static String getMappingFileArtifact(BuildInfo buildInfo) {
+    return buildInfo.getTargetWithoutBuildType() + "-proguard-dict-" + buildInfo.id + ".zip";
+  }
+
+  private static String readAllLines(InputStream stream) {
+    return new BufferedReader(new InputStreamReader(stream))
+        .lines()
+        .collect(Collectors.joining(System.lineSeparator()));
+  }
+
+  private static void ensureFetchArtifactCommand() {
+    try {
+      Process process = new ProcessBuilder("fetch_artifact", "--help").start();
+      process.destroy();
+    } catch (IOException e) {
+      throw error(
+          String.join(
+              System.lineSeparator(),
+              "Using build identification flags requires 'fetch_artifact'.",
+              "Cannot find 'fetch_artifact' in PATH. Install it using:",
+              "  sudo apt install android-fetch-artifact"));
+    }
+  }
+
+  private static List<String> fetchArtifactCommand(
+      BuildInfo buildInfo, String artifact, String entry) {
+    List<String> command = new ArrayList<>();
+    command.add("fetch_artifact");
+    command.addAll(Arrays.asList("--bid", buildInfo.id));
+    command.addAll(Arrays.asList("--target", buildInfo.target));
+    if (buildInfo.branch != null) {
+      command.addAll(Arrays.asList("--branch", buildInfo.branch));
+    }
+    if (entry != null) {
+      command.addAll(Arrays.asList("--zip_entry", entry));
+    }
+    command.add(artifact);
+    return command;
+  }
+
+  private static Path fetchArtifact(
+      BuildInfo buildInfo, String artifact, String entry, Path tempDir)
+      throws IOException, InterruptedException {
+    Path tempDirForBuild = ensureTempBuildDir(buildInfo, tempDir);
+    Path outFile = tempDirForBuild.resolve(entry != null ? entry : artifact);
+    if (Files.exists(outFile)) {
+      return outFile;
+    }
+    List<String> command = fetchArtifactCommand(buildInfo, artifact, entry);
+    Process process = new ProcessBuilder(command).directory(tempDirForBuild.toFile()).start();
+    process.waitFor();
+    String stderr = readAllLines(process.getErrorStream());
+    String stdout = readAllLines(process.getInputStream());
+    if (process.exitValue() == 0) {
+      return outFile;
+    }
+    throw error(
+        String.join(
+            System.lineSeparator(),
+            "Failed attempt to fetch_artifact.",
+            "Command: " + String.join(" ", command),
+            "Stdout:",
+            stdout,
+            "Stderr:",
+            stderr));
+  }
+
+  private static Path ensureTempBuildDir(BuildInfo buildInfo, Path tempDir) throws IOException {
+    Path tempDirForBuild = tempDir.resolve(buildInfo.id + "_" + buildInfo.target);
+    if (Files.notExists(tempDirForBuild)) {
+      Files.createDirectory(tempDirForBuild);
+    }
+    return tempDirForBuild;
+  }
+
   public static void main(String[] args) throws Exception {
+    String bid = null;
+    String target = null;
+    String branch = null;
     String stackTraceFile = null;
     String defaultMapArg = null;
     boolean printMappingFileTable = false;
@@ -674,7 +885,25 @@ public class RetraceWrapper {
         System.out.println(USAGE);
         return;
       }
-      if (arg.equals("--default-map")) {
+      if (arg.equals("--bid")) {
+        i++;
+        if (i == args.length) {
+          throw error("No argument given for --bid");
+        }
+        bid = args[i];
+      } else if (arg.equals("--target")) {
+        i++;
+        if (i == args.length) {
+          throw error("No argument given for --target");
+        }
+        target = args[i];
+      } else if (arg.equals("--branch")) {
+        i++;
+        if (i == args.length) {
+          throw error("No argument given for --branch");
+        }
+        branch = args[i];
+      } else if (arg.equals("--default-map")) {
         i++;
         if (i == args.length) {
           throw error("No argument given for --default-map");
@@ -697,34 +926,64 @@ public class RetraceWrapper {
       }
     }
 
-    LazyRetracer defaultRetracer = null;
+    LocalLazyRetracer defaultRetracer = null;
     if (defaultMapArg != null) {
-      defaultRetracer = new LazyRetracer(null, Paths.get(defaultMapArg));
+      defaultRetracer = new LocalLazyRetracer(null, Paths.get(defaultMapArg));
     }
 
-    populateMappingFileMap(searchPaths);
-    if (printMappingFileTable) {
-      List<String> keys = new ArrayList<>(RETRACERS.keySet());
-      keys.sort(String::compareTo);
-      for (String key : keys) {
-        LazyRetracer retracer = RETRACERS.get(key);
-        System.out.println(key + " -> " + retracer.mapPath);
+    BuildInfo buildInfo = null;
+    if (bid != null || target != null) {
+      if (bid == null || target == null) {
+        throw error("Must supply a target together with a build id.");
       }
-      return;
+      buildInfo = new BuildInfo(bid, target, branch);
     }
 
-    if (stackTraceFile == null) {
-      retrace(System.in, defaultRetracer);
-    } else {
-      Path path = Paths.get(stackTraceFile);
-      if (!Files.exists(path)) {
-        throw error("Input file does not exist: " + stackTraceFile);
+    Path tempDir = Files.createTempDirectory("retrace");
+    try {
+      if (buildInfo != null) {
+        populateRemoteMappingFileMap(buildInfo, tempDir);
+      } else {
+        populateLocalMappingFileMap(searchPaths);
       }
-      try (InputStream stream = Files.newInputStream(path, StandardOpenOption.READ)) {
-        retrace(stream, defaultRetracer);
+      if (printMappingFileTable) {
+        List<String> keys = new ArrayList<>(RETRACERS.keySet());
+        keys.sort(String::compareTo);
+        for (String key : keys) {
+          LazyRetracer retracer = RETRACERS.get(key);
+          System.out.println(key + " -> " + retracer.getMapLocation());
+        }
+        return;
       }
+
+      if (stackTraceFile == null) {
+        retrace(System.in, defaultRetracer, tempDir);
+      } else {
+        Path path = Paths.get(stackTraceFile);
+        if (!Files.exists(path)) {
+          throw error("Input file does not exist: " + stackTraceFile);
+        }
+        try (InputStream stream = Files.newInputStream(path, StandardOpenOption.READ)) {
+          retrace(stream, defaultRetracer, tempDir);
+        }
+      }
+      flushPendingMessages();
+    } finally {
+      deleteDirectory(tempDir);
     }
-    flushPendingMessages();
+  }
+
+  private static void deleteDirectory(Path directory) throws IOException {
+    Files.walk(directory)
+        .sorted(Comparator.reverseOrder())
+        .forEachOrdered(
+            p -> {
+              try {
+                Files.delete(p);
+              } catch (IOException e) {
+                throw new RuntimeException(e);
+              }
+            });
   }
 
   private static List<String> parseSearchPath(String paths) {
@@ -734,7 +993,7 @@ public class RetraceWrapper {
     do {
       int split = paths.indexOf(':', start);
       int end = split != -1 ? split : length;
-      String path = paths.substring(start, end).strip();
+      String path = paths.substring(start, end).trim();
       if (!path.isEmpty()) {
         result.add(path);
       }
