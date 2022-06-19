@@ -66,8 +66,10 @@ public class RetraceWrapper {
           "  --target <target>        # Build target name, e.g., coral-userdebug",
           "  --branch <branch>        # Branch, e.g., master (only needed when bid is not a build"
               + " number)",
-          "or for retracing local builds <option>s are:",
-          "  --default-map <file>     # Default map to retrace lines that don't auto-identify.",
+          "or for controlling map lookup/location <option>s are:",
+          "  --default-map <file/app> # Default map to retrace lines that don't auto-identify.",
+          "                           # The argument can be a local file or it can be any unique",
+          "                           # substring of a map path found in the map-table.",
           "  --map-search-path <path> # Path to search for mappings that support auto-identify.",
           "                           # Separate <path> entries by colon ':'.",
           "                           # Default '" + String.join(":", AOSP_MAP_SEARCH_PATHS) + "'.",
@@ -586,7 +588,10 @@ public class RetraceWrapper {
         (context, parentResult) ->
             retraceFrameRecursive(retracer, context, parentResult, 0, frames)
                 .forEach(finalResultNodes::add));
-
+    if (finalResultNodes.isEmpty()) {
+      printIdentityStackTrace(exceptionLine, frames);
+      return;
+    }
     if (finalResultNodes.size() > 1) {
       System.out.println(
           "Printing "
@@ -926,11 +931,6 @@ public class RetraceWrapper {
       }
     }
 
-    LocalLazyRetracer defaultRetracer = null;
-    if (defaultMapArg != null) {
-      defaultRetracer = new LocalLazyRetracer(null, Paths.get(defaultMapArg));
-    }
-
     BuildInfo buildInfo = null;
     if (bid != null || target != null) {
       if (bid == null || target == null) {
@@ -956,6 +956,11 @@ public class RetraceWrapper {
         return;
       }
 
+      LazyRetracer defaultRetracer = findDefaultRetracer(defaultMapArg);
+      if (defaultRetracer != null) {
+        System.out.println("Using default mapping: " + defaultRetracer.getMapLocation());
+      }
+
       if (stackTraceFile == null) {
         retrace(System.in, defaultRetracer, tempDir);
       } else {
@@ -971,6 +976,36 @@ public class RetraceWrapper {
     } finally {
       deleteDirectory(tempDir);
     }
+  }
+
+  private static LazyRetracer findDefaultRetracer(String key) {
+    if (key == null) {
+      return null;
+    }
+    if (Files.exists(Paths.get(key))) {
+      return new LocalLazyRetracer(null, Paths.get(key));
+    }
+    List<LazyRetracer> matches = new ArrayList<>();
+    for (LazyRetracer retracer : RETRACERS.values()) {
+      if (retracer.getMapLocation().contains(key)) {
+        matches.add(retracer);
+      }
+    }
+    if (matches.size() == 1) {
+      return matches.get(0);
+    }
+    StringBuilder builder = new StringBuilder("--default-map ").append(key);
+    if (matches.isEmpty()) {
+      builder
+          .append(" did not match a local file or any map location in mapping table.")
+          .append(" (Use --print-map-table to view the table).");
+    } else {
+      builder.append(" matched ").append(matches.size()).append(" map paths:\n");
+      for (LazyRetracer match : matches) {
+        builder.append(match.getMapLocation()).append('\n');
+      }
+    }
+    throw error(builder.toString());
   }
 
   private static void deleteDirectory(Path directory) throws IOException {
