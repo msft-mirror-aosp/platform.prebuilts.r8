@@ -49,7 +49,8 @@ public class R8Wrapper {
   }
 
   private static String getUsageMessage() {
-    StringBuilder builder = appendLines(
+    StringBuilder builder =
+        appendLines(
             new StringBuilder(),
             "Usage: r8 [options] [@<argfile>] <input-files>",
             " where <input-files> are any combination of class, zip, or jar files",
@@ -76,25 +77,69 @@ public class R8Wrapper {
     R8Command.Builder builder = R8Command.parse(remainingArgs, CLI_ORIGIN);
     if (builder.isPrintHelp()) {
       System.out.println(getUsageMessage());
-    } else if (builder.isPrintVersion()) {
-      System.out.println("R8(" + WRAPPER_STRING + ") " + Version.getVersionString());
-    } else {
-      wrapper.applyWrapperArguments(builder);
-      R8.run(builder.build());
+      return;
     }
+    if (builder.isPrintVersion()) {
+      System.out.println("R8(" + WRAPPER_STRING + ") " + Version.getVersionString());
+      return;
+    }
+    wrapper.applyWrapperArguments(builder);
+    // TODO(b/232073181): Replace this by use of the platform flag.
+    builder.setEnableExperimentalMissingLibraryApiModeling(false);
+    R8.run(builder.build());
   }
 
+  private boolean useCompatPg = false;
   private Path depsOutput = null;
+  private final List<String> pgRules = new ArrayList<>();
 
   private String[] parseWrapperArguments(String[] args) {
     List<String> remainingArgs = new ArrayList<>();
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
-      if (arg.equals("--deps-file")) {
-        String nextArg = args[++i];
-        depsOutput = Paths.get(nextArg);
-      } else {
-        remainingArgs.add(arg);
+      switch (arg) {
+        case "--deps-file":
+          {
+            String nextArg = args[++i];
+            depsOutput = Paths.get(nextArg);
+            break;
+          }
+          // Remove uses of this same as for D8 (b/69377755).
+        case "--multi-dex":
+          {
+            break;
+          }
+          // TODO(zerny): replace uses with --pg-compat
+        case "--force-proguard-compatibility":
+          {
+            useCompatPg = true;
+            break;
+          }
+          // Zero argument PG rules.
+        case "-dontshrink":
+        case "-dontoptimize":
+        case "-dontobfuscate":
+        case "-ignorewarnings":
+          {
+            pgRules.add(arg);
+            break;
+          }
+          // One argument PG rules.
+        case "-injars":
+        case "-libraryjars":
+        case "-include":
+        case "-printmapping":
+        case "-printconfiguration":
+        case "-printusage":
+          {
+            pgRules.add(arg + " " + args[++i]);
+            break;
+          }
+        default:
+          {
+            remainingArgs.add(arg);
+            break;
+          }
       }
     }
     return remainingArgs.toArray(new String[0]);
@@ -103,8 +148,14 @@ public class R8Wrapper {
   private void applyWrapperArguments(R8Command.Builder builder) {
     if (depsOutput != null) {
       Path codeOutput = builder.getOutputPath();
-      Path target = Files.isDirectory(codeOutput) ? depsOutput.resolve("classes.dex") : depsOutput;
+      Path target = Files.isDirectory(codeOutput) ? codeOutput.resolve("classes.dex") : codeOutput;
       builder.setInputDependencyGraphConsumer(new DepsFileWriter(target, depsOutput.toString()));
+    }
+    if (!pgRules.isEmpty()) {
+      builder.addProguardConfiguration(pgRules, CLI_ORIGIN);
+    }
+    if (useCompatPg) {
+      builder.setProguardCompatibility(useCompatPg);
     }
   }
 }
