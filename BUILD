@@ -1,4 +1,12 @@
 load("//tools/base/bazel:jvm_import.bzl", "jvm_import")
+load("//tools/base/bazel:utils.bzl", "fileset")
+
+fileset(
+    name = "license",
+    srcs = ["LICENSE"],
+    mappings = {"LICENSE": "r8_license.txt"},
+    visibility = ["//tools/adt/idea/studio:__pkg__"],
+)
 
 # managed by go/iml_to_build
 jvm_import(
