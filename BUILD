@@ -16,6 +16,7 @@ jvm_import(
         "//tools/adt/idea/android-kotlin:__pkg__",
         "//tools/adt/idea/studio:__pkg__",
         "//tools/base/build-system/builder:__pkg__",
+        "//tools/base/build-system/shrinker:__pkg__",
         "//tools/base/deploy/deployer:__pkg__",
         "//tools/base/deploy/test:__pkg__",
         "//tools/base/sdklib:__pkg__",
