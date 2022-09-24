@@ -145,6 +145,10 @@ public class R8Wrapper {
     return remainingArgs.toArray(new String[0]);
   }
 
+  public String toString() {
+    return "XX";
+  }
+
   private void applyWrapperArguments(R8Command.Builder builder) {
     if (depsOutput != null) {
       Path codeOutput = builder.getOutputPath();
