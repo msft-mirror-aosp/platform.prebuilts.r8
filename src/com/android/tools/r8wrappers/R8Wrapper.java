@@ -161,5 +161,9 @@ public class R8Wrapper {
     if (useCompatPg) {
       builder.setProguardCompatibility(useCompatPg);
     }
+    // TODO(b/249230932): Remove once the correct use of platform flag is in place.
+    if (builder.getMinApiLevel() == 10000) {
+      builder.setAndroidPlatformBuild(true);
+    }
   }
 }
