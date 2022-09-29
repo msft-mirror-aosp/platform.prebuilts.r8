@@ -57,6 +57,10 @@ genrule {
 }
 
 // Run retrace on the stack trace to produce a retraced stack trace.
+// Filter out warnings produced by OpenJDK to stdout, otherwise these warnings
+// make it into generated Java files (b/240131965).
+// TODO: Remove the filter if OpenJDK stops writing the warning to stdout (see
+// https://bugs.openjdk.org/browse/JDK-8270087).
 genrule {
     name: "r8retrace-run-retrace",
     out: ["retraced-stacktrace.txt"],
@@ -65,6 +69,7 @@ genrule {
     cmd: "$(location retrace)"
         + " --map-search-path $(location :HelloActivityWithR8{.proguard_map})"
         + " $(location :r8retrace-create-stacktrace)"
+        + " | sed '/Duplicate cpuset controllers detected/d'"
         + " > $(out)",
 }
 
