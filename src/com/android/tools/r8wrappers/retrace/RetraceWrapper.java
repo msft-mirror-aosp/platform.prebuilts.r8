@@ -982,7 +982,7 @@ public class RetraceWrapper {
     if (key == null) {
       return null;
     }
-    if (Files.exists(Paths.get(key))) {
+    if (Files.isRegularFile(Paths.get(key))) {
       return new LocalLazyRetracer(null, Paths.get(key));
     }
     List<LazyRetracer> matches = new ArrayList<>();
