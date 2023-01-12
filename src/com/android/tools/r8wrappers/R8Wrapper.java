@@ -88,8 +88,10 @@ public class R8Wrapper {
       return;
     }
     wrapper.applyWrapperArguments(builder);
-    // TODO(b/232073181): Replace this by use of the platform flag.
-    builder.setEnableExperimentalMissingLibraryApiModeling(false);
+    // TODO(b/232073181): Remove this once platform flag is the default.
+    if (!builder.getAndroidPlatformBuild()) {
+      System.setProperty("com.android.tools.r8.disableApiModeling", "1");
+    }
     R8.run(builder.build());
   }
 
