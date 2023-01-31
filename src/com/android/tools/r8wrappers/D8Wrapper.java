@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,10 @@
 package com.android.tools.r8wrappers;
 
 import com.android.tools.r8.CompilationFailedException;
+import com.android.tools.r8.D8;
+import com.android.tools.r8.D8Command;
+import com.android.tools.r8.Diagnostic;
+import com.android.tools.r8.DiagnosticsHandler;
 import com.android.tools.r8.ParseFlagInfo;
 import com.android.tools.r8.ParseFlagPrinter;
 import com.android.tools.r8.R8;
@@ -32,9 +36,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class R8Wrapper {
+public class D8Wrapper {
 
-  private static final String WRAPPER_STRING = "r8-aosp-wrapper";
+  private static final String WRAPPER_STRING = "d8-aosp-wrapper";
 
   private static final Origin CLI_ORIGIN =
       new Origin(Origin.root()) {
@@ -46,7 +50,6 @@ public class R8Wrapper {
 
   private static List<ParseFlagInfo> getAdditionalFlagsInfo() {
     return Arrays.asList(
-        new WrapperFlag("--deps-file <file>", "Write input dependencies to <file>."),
         new WrapperFlag("--info", "Print the info-level log messages from the compiler."));
   }
 
@@ -54,12 +57,12 @@ public class R8Wrapper {
     StringBuilder builder =
         appendLines(
             new StringBuilder(),
-            "Usage: r8 [options] [@<argfile>] <input-files>",
-            " where <input-files> are any combination of class, zip, or jar files",
+            "Usage: d8 [options] [@<argfile>] <input-files>",
+            " where <input-files> are any combination of dex, class, zip, jar or apk files",
             " and each <argfile> is a file containing additional arguments (one per line)",
             " and options are:");
     new ParseFlagPrinter()
-        .addFlags(R8Command.getParseFlagsInformation())
+        .addFlags(D8Command.getParseFlagsInformation())
         .addFlags(getAdditionalFlagsInfo())
         .setIndent(2)
         .appendLinesToBuilder(builder);
@@ -74,16 +77,16 @@ public class R8Wrapper {
   }
 
   public static void main(String[] args) throws CompilationFailedException {
-    R8Wrapper wrapper = new R8Wrapper();
+    D8Wrapper wrapper = new D8Wrapper();
     String[] remainingArgs = wrapper.parseWrapperArguments(args);
-    R8Command.Builder builder = R8Command.parse(
+    D8Command.Builder builder = D8Command.parse(
         remainingArgs, CLI_ORIGIN, wrapper.diagnosticsHandler);
     if (builder.isPrintHelp()) {
       System.out.println(getUsageMessage());
       return;
     }
     if (builder.isPrintVersion()) {
-      System.out.println("R8(" + WRAPPER_STRING + ") " + Version.getVersionString());
+      System.out.println("D8(" + WRAPPER_STRING + ") " + Version.getVersionString());
       return;
     }
     wrapper.applyWrapperArguments(builder);
@@ -91,13 +94,10 @@ public class R8Wrapper {
     if (!builder.getAndroidPlatformBuild()) {
       System.setProperty("com.android.tools.r8.disableApiModeling", "1");
     }
-    R8.run(builder.build());
+    D8.run(builder.build());
   }
 
   private WrapperDiagnosticsHandler diagnosticsHandler = new WrapperDiagnosticsHandler();
-  private boolean useCompatPg = false;
-  private Path depsOutput = null;
-  private final List<String> pgRules = new ArrayList<>();
   private boolean printInfoDiagnostics = false;
 
   private String[] parseWrapperArguments(String[] args) {
@@ -110,43 +110,6 @@ public class R8Wrapper {
             printInfoDiagnostics = true;
             break;
           }
-        case "--deps-file":
-          {
-            String nextArg = args[++i];
-            depsOutput = Paths.get(nextArg);
-            break;
-          }
-          // Remove uses of this same as for D8 (b/69377755).
-        case "--multi-dex":
-          {
-            break;
-          }
-          // TODO(zerny): replace uses with --pg-compat
-        case "--force-proguard-compatibility":
-          {
-            useCompatPg = true;
-            break;
-          }
-          // Zero argument PG rules.
-        case "-dontshrink":
-        case "-dontoptimize":
-        case "-dontobfuscate":
-        case "-ignorewarnings":
-          {
-            pgRules.add(arg);
-            break;
-          }
-          // One argument PG rules.
-        case "-injars":
-        case "-libraryjars":
-        case "-include":
-        case "-printmapping":
-        case "-printconfiguration":
-        case "-printusage":
-          {
-            pgRules.add(arg + " " + args[++i]);
-            break;
-          }
         default:
           {
             remainingArgs.add(arg);
@@ -157,23 +120,11 @@ public class R8Wrapper {
     return remainingArgs.toArray(new String[0]);
   }
 
-  private void applyWrapperArguments(R8Command.Builder builder) {
+  private void applyWrapperArguments(D8Command.Builder builder) {
     diagnosticsHandler.setPrintInfoDiagnostics(printInfoDiagnostics);
-    if (depsOutput != null) {
-      Path codeOutput = builder.getOutputPath();
-      Path target = Files.isDirectory(codeOutput) ? codeOutput.resolve("classes.dex") : codeOutput;
-      builder.setInputDependencyGraphConsumer(new DepsFileWriter(target, depsOutput.toString()));
-    }
-    if (!pgRules.isEmpty()) {
-      builder.addProguardConfiguration(pgRules, CLI_ORIGIN);
-    }
-    if (useCompatPg) {
-      builder.setProguardCompatibility(useCompatPg);
-    }
     // TODO(b/249230932): Remove once the correct use of platform flag is in place.
     if (builder.getMinApiLevel() == 10000) {
       builder.setAndroidPlatformBuild(true);
     }
   }
-
 }
