@@ -23,6 +23,7 @@ import com.android.tools.r8.R8Command;
 import com.android.tools.r8.Version;
 import com.android.tools.r8.origin.Origin;
 import com.android.tools.r8wrappers.utils.DepsFileWriter;
+import com.android.tools.r8wrappers.utils.WrapperDiagnosticsHandler;
 import com.android.tools.r8wrappers.utils.WrapperFlag;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,7 +46,8 @@ public class R8Wrapper {
 
   private static List<ParseFlagInfo> getAdditionalFlagsInfo() {
     return Arrays.asList(
-        new WrapperFlag("--deps-file <file>", "Write input dependencies to <file>."));
+        new WrapperFlag("--deps-file <file>", "Write input dependencies to <file>."),
+        new WrapperFlag("--info", "Print the info-level log messages from the compiler."));
   }
 
   private static String getUsageMessage() {
@@ -74,7 +76,8 @@ public class R8Wrapper {
   public static void main(String[] args) throws CompilationFailedException {
     R8Wrapper wrapper = new R8Wrapper();
     String[] remainingArgs = wrapper.parseWrapperArguments(args);
-    R8Command.Builder builder = R8Command.parse(remainingArgs, CLI_ORIGIN);
+    R8Command.Builder builder = R8Command.parse(
+        remainingArgs, CLI_ORIGIN, wrapper.diagnosticsHandler);
     if (builder.isPrintHelp()) {
       System.out.println(getUsageMessage());
       return;
@@ -84,20 +87,29 @@ public class R8Wrapper {
       return;
     }
     wrapper.applyWrapperArguments(builder);
-    // TODO(b/232073181): Replace this by use of the platform flag.
-    builder.setEnableExperimentalMissingLibraryApiModeling(false);
+    // TODO(b/232073181): Remove this once platform flag is the default.
+    if (!builder.getAndroidPlatformBuild()) {
+      System.setProperty("com.android.tools.r8.disableApiModeling", "1");
+    }
     R8.run(builder.build());
   }
 
+  private WrapperDiagnosticsHandler diagnosticsHandler = new WrapperDiagnosticsHandler();
   private boolean useCompatPg = false;
   private Path depsOutput = null;
   private final List<String> pgRules = new ArrayList<>();
+  private boolean printInfoDiagnostics = false;
 
   private String[] parseWrapperArguments(String[] args) {
     List<String> remainingArgs = new ArrayList<>();
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
       switch (arg) {
+        case "--info":
+          {
+            printInfoDiagnostics = true;
+            break;
+          }
         case "--deps-file":
           {
             String nextArg = args[++i];
@@ -146,6 +158,7 @@ public class R8Wrapper {
   }
 
   private void applyWrapperArguments(R8Command.Builder builder) {
+    diagnosticsHandler.setPrintInfoDiagnostics(printInfoDiagnostics);
     if (depsOutput != null) {
       Path codeOutput = builder.getOutputPath();
       Path target = Files.isDirectory(codeOutput) ? codeOutput.resolve("classes.dex") : codeOutput;
@@ -157,5 +170,10 @@ public class R8Wrapper {
     if (useCompatPg) {
       builder.setProguardCompatibility(useCompatPg);
     }
+    // TODO(b/249230932): Remove once the correct use of platform flag is in place.
+    if (builder.getMinApiLevel() == 10000) {
+      builder.setAndroidPlatformBuild(true);
+    }
   }
+
 }
