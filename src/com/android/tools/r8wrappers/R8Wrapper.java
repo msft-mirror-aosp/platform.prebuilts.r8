@@ -91,6 +91,10 @@ public class R8Wrapper {
     if (!builder.getAndroidPlatformBuild()) {
       System.setProperty("com.android.tools.r8.disableApiModeling", "1");
     }
+    // Disable this optimization as it can impact weak reference semantics. See b/233432839.
+    System.setProperty("com.android.tools.r8.disableEnqueuerDeferredTracing", "1");
+    // Disable class merging across different files to improve attribution. See b/242881914.
+    System.setProperty("com.android.tools.r8.enableSameFilePolicy", "1");
     R8.run(builder.build());
   }
 
