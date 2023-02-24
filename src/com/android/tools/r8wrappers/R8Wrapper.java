@@ -16,8 +16,6 @@
 package com.android.tools.r8wrappers;
 
 import com.android.tools.r8.CompilationFailedException;
-import com.android.tools.r8.Diagnostic;
-import com.android.tools.r8.DiagnosticsHandler;
 import com.android.tools.r8.ParseFlagInfo;
 import com.android.tools.r8.ParseFlagPrinter;
 import com.android.tools.r8.R8;
@@ -25,6 +23,7 @@ import com.android.tools.r8.R8Command;
 import com.android.tools.r8.Version;
 import com.android.tools.r8.origin.Origin;
 import com.android.tools.r8wrappers.utils.DepsFileWriter;
+import com.android.tools.r8wrappers.utils.WrapperDiagnosticsHandler;
 import com.android.tools.r8wrappers.utils.WrapperFlag;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -88,8 +87,15 @@ public class R8Wrapper {
       return;
     }
     wrapper.applyWrapperArguments(builder);
-    // TODO(b/232073181): Replace this by use of the platform flag.
-    builder.setEnableExperimentalMissingLibraryApiModeling(false);
+    builder.setEnableExperimentalKeepAnnotations(true);
+    // TODO(b/232073181): Remove this once platform flag is the default.
+    if (!builder.getAndroidPlatformBuild()) {
+      System.setProperty("com.android.tools.r8.disableApiModeling", "1");
+    }
+    // Disable this optimization as it can impact weak reference semantics. See b/233432839.
+    System.setProperty("com.android.tools.r8.disableEnqueuerDeferredTracing", "1");
+    // Disable class merging across different files to improve attribution. See b/242881914.
+    System.setProperty("com.android.tools.r8.enableSameFilePolicy", "1");
     R8.run(builder.build());
   }
 
@@ -175,19 +181,4 @@ public class R8Wrapper {
     }
   }
 
-  private static class WrapperDiagnosticsHandler implements DiagnosticsHandler {
-
-    private boolean printInfoDiagnostics = false;
-
-    public void setPrintInfoDiagnostics(boolean value) {
-      printInfoDiagnostics = value;
-    }
-
-    @Override
-    public void info(Diagnostic info) {
-      if (printInfoDiagnostics) {
-        DiagnosticsHandler.super.info(info);
-      }
-    }
-  }
 }
