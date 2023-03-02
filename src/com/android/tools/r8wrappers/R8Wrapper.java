@@ -87,6 +87,7 @@ public class R8Wrapper {
       return;
     }
     wrapper.applyWrapperArguments(builder);
+    builder.setEnableExperimentalKeepAnnotations(true);
     // TODO(b/232073181): Remove this once platform flag is the default.
     if (!builder.getAndroidPlatformBuild()) {
       System.setProperty("com.android.tools.r8.disableApiModeling", "1");
