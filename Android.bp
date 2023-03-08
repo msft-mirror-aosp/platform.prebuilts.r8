@@ -107,3 +107,11 @@ java_import_host {
         },
     },
 }
+
+// Library of "keep" annotations for instructing the R8 code shrinker.
+// The R8 keep annotations are part of an experimental alternative to
+// the use of "keep rules". More information can be found in b/248408342.
+java_import {
+    name: "keepanno-annotations",
+    jars: ["keepanno-annotations.jar"],
+}
