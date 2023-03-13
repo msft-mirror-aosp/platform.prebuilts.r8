@@ -87,8 +87,8 @@ public class CreateStacktraceFromDexDumpTool {
   }
 
   private boolean isDebug() {
-    String marker = skipUntil(inputLines.iterator(), l -> l.startsWith(R8_MARKER_PREFIX));
-    return marker != null && marker.contains("debug");
+    String marker = skipUntil(inputLines.iterator(), l -> l.contains(R8_MARKER_PREFIX));
+    return marker != null && marker.contains("\"debug\"");
   }
 
   private static String mapPcInLineNumberTable(
