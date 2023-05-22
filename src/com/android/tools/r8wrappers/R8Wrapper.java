@@ -151,6 +151,7 @@ public class R8Wrapper {
         case "-printmapping":
         case "-printconfiguration":
         case "-printusage":
+        case "-printseeds":
           {
             pgRules.add(arg + " " + args[++i]);
             break;
