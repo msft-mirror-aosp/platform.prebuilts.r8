@@ -74,6 +74,13 @@ public class R8Wrapper {
   }
 
   public static void main(String[] args) throws CompilationFailedException {
+    // Disable this optimization as it can impact weak reference semantics. See b/233432839.
+    System.setProperty("com.android.tools.r8.disableEnqueuerDeferredTracing", "1");
+    // Disable class merging across different files to improve attribution. See b/242881914.
+    System.setProperty("com.android.tools.r8.enableSameFilePolicy", "1");
+    // Enable experimental -whyareyounotinlining config to aid debugging. See b/277389461.
+    System.setProperty("com.android.tools.r8.experimental.enablewhyareyounotinlining", "1");
+
     R8Wrapper wrapper = new R8Wrapper();
     String[] remainingArgs = wrapper.parseWrapperArguments(args);
     R8Command.Builder builder = R8Command.parse(
@@ -92,10 +99,6 @@ public class R8Wrapper {
     if (!builder.getAndroidPlatformBuild()) {
       System.setProperty("com.android.tools.r8.disableApiModeling", "1");
     }
-    // Disable this optimization as it can impact weak reference semantics. See b/233432839.
-    System.setProperty("com.android.tools.r8.disableEnqueuerDeferredTracing", "1");
-    // Disable class merging across different files to improve attribution. See b/242881914.
-    System.setProperty("com.android.tools.r8.enableSameFilePolicy", "1");
     R8.run(builder.build());
   }
 
@@ -148,6 +151,7 @@ public class R8Wrapper {
         case "-printmapping":
         case "-printconfiguration":
         case "-printusage":
+        case "-printseeds":
           {
             pgRules.add(arg + " " + args[++i]);
             break;
