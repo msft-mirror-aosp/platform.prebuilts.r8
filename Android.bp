@@ -65,20 +65,19 @@ java_binary_host {
 
 java_binary_host {
     name: "r8-compat-proguard",
-    wrapper: "r8-compat-proguard",
+    main_class: "com.android.tools.r8.compatproguard.CompatProguard",
     static_libs: ["r8lib"],
 }
 
 java_binary_host {
     name: "r8",
-    main_class: "com.android.tools.r8.R8",
+    main_class: "com.android.tools.r8wrappers.R8Wrapper",
     static_libs: ["r8lib"]
 }
 
 java_binary_host {
     name: "retrace",
-    main_class: "com.android.tools.r8.retrace.RetraceWrapper",
-    srcs: ["src/com/android/tools/r8/retrace/RetraceWrapper.java"],
+    main_class: "com.android.tools.r8wrappers.retrace.RetraceWrapper",
     static_libs: ["r8lib"],
 }
 
@@ -88,12 +87,31 @@ java_binary_host {
     static_libs: ["r8lib"],
 }
 
-java_import_host {
+java_library_host {
     name: "r8lib",
+    srcs: ["src/**/*.java"],
+    static_libs: ["r8lib-prebuilt"],
+    target: {
+        windows: {
+            enabled: true,
+        },
+    },
+}
+
+java_import_host {
+    name: "r8lib-prebuilt",
     jars: ["r8.jar"],
     target: {
         windows: {
             enabled: true,
         },
     },
+}
+
+// Library of "keep" annotations for instructing the R8 code shrinker.
+// The R8 keep annotations are part of an experimental alternative to
+// the use of "keep rules". More information can be found in b/248408342.
+java_import {
+    name: "keepanno-annotations",
+    jars: ["keepanno-annotations.jar"],
 }
