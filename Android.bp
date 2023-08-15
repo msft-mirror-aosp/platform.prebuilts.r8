@@ -98,6 +98,11 @@ java_library_host {
     },
 }
 
+filegroup {
+    name: "r8.jar.map",
+    srcs: ["r8.jar.map"],
+}
+
 java_import_host {
     name: "r8lib-prebuilt",
     jars: ["r8.jar"],
