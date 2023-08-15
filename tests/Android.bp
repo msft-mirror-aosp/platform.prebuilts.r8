@@ -60,9 +60,14 @@ genrule {
 genrule {
     name: "r8retrace-run-retrace",
     out: ["retraced-stacktrace.txt"],
-    srcs: [":r8retrace-create-stacktrace", ":HelloActivityWithR8{.proguard_map}"],
     tools: ["retrace"],
+    tool_files: [
+        ":r8.jar.map",
+        ":r8retrace-create-stacktrace",
+        ":HelloActivityWithR8{.proguard_map}",
+    ],
     cmd: "$(location retrace)"
+        + " --cwd-relative-search-paths"
         + " --map-search-path $(location :HelloActivityWithR8{.proguard_map})"
         + " $(location :r8retrace-create-stacktrace)"
         + " > $(out)",
