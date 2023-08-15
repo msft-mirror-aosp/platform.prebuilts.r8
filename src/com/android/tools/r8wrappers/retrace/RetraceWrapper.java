@@ -62,20 +62,29 @@ public class RetraceWrapper {
           "Usage: retrace [<option>]* [<file>]",
           "where <file> is the file to retrace (default stdin)",
           "and for retracing build server artifacts <option>s are:",
-          "  --bid <build id>         # Build identifier, e.g., 1234 or P1234",
-          "  --target <target>        # Build target name, e.g., coral-userdebug",
-          "  --branch <branch>        # Branch, e.g., master (only needed when bid is not a build"
-              + " number)",
+          "  --bid <build id>            # Build identifier, e.g., 1234 or P1234",
+          "  --target <target>           # Build target name, e.g., coral-userdebug",
+          "  --branch <branch>           # Branch, e.g., master (only needed when bid is not a",
+          "                              # build number)",
           "or for controlling map lookup/location <option>s are:",
-          "  --default-map <file/app> # Default map to retrace lines that don't auto-identify.",
-          "                           # The argument can be a local file or it can be any unique",
-          "                           # substring of a map path found in the map-table.",
-          "  --map-search-path <path> # Path to search for mappings that support auto-identify.",
-          "                           # Separate <path> entries by colon ':'.",
-          "                           # Default '" + String.join(":", AOSP_MAP_SEARCH_PATHS) + "'.",
+          "  --default-map <file/app>    # Default map to retrace lines that don't auto-identify.",
+          "                              # The argument can be a local file or it can be any",
+          "                              # unique substring of a map path found in the map-table.",
+          "  --map-search-path <path>    # Path to search for mappings that support auto-identify.",
+          "                              # Separate <path> entries by colon ':'.",
+          "                              # Default '"
+              + String.join(":", AOSP_MAP_SEARCH_PATHS)
+              + "'.",
           "other supported <option>s are:",
-          "  --print-map-table        # Print the table of identified mapping files and exit.",
-          "  -h, --help               # Print this message.");
+          "  --print-map-table           # Print the table of identified mapping files and exit.",
+          "  --prebuilts-r8-map-path     # Specify a prebuilt r8.jar.map file path instead of ",
+          "                              # finding this file automatically.",
+          "  --cwd-relative-search-paths # When this flag is set, the search paths given in",
+          "                              # the --map-search-path flag are assumed to be relative",
+          "                              # to the current directory. Otherwise, these paths are",
+          "                              # assumed to be relative to the root of the Android",
+          "                              # checkout.",
+          "  -h, --help                  # Print this message.");
 
   private static class ForwardingDiagnosticsHander implements DiagnosticsHandler {
     @Override
@@ -689,12 +698,16 @@ public class RetraceWrapper {
             });
   }
 
-  private static void populateLocalMappingFileMap(List<String> searchPaths) throws Exception {
+  private static void populateLocalMappingFileMap(
+      Path prebuiltR8MapPath, List<String> searchPaths, boolean cwdRelativeSearchPaths)
+      throws Exception {
     Path projectRoot = getProjectRoot();
     if (projectRoot == null) {
       return;
     }
-    Path prebuiltR8MapPath = projectRoot.resolve("prebuilts").resolve("r8").resolve("r8.jar.map");
+    if (prebuiltR8MapPath == null) {
+      prebuiltR8MapPath = projectRoot.resolve("prebuilts").resolve("r8").resolve("r8.jar.map");
+    }
     MapInfo prebuiltR8MapInfo = readMapHeaderInfo(prebuiltR8MapPath);
     if (prebuiltR8MapInfo == null) {
       info("Unable to read expected prebuilt R8 map in " + prebuiltR8MapPath);
@@ -703,7 +716,12 @@ public class RetraceWrapper {
           prebuiltR8MapInfo.id, new LocalLazyRetracer(prebuiltR8MapInfo, prebuiltR8MapPath));
     }
     for (String path : searchPaths) {
-      Path resolvedPath = projectRoot.resolve(Paths.get(path));
+      Path resolvedPath;
+      if (cwdRelativeSearchPaths) {
+        resolvedPath = Paths.get(path);
+      } else {
+        resolvedPath = projectRoot.resolve(Paths.get(path));
+      }
       if (Files.notExists(resolvedPath)) {
         error("Invalid search path entry: " + resolvedPath);
       }
@@ -883,6 +901,8 @@ public class RetraceWrapper {
     String stackTraceFile = null;
     String defaultMapArg = null;
     boolean printMappingFileTable = false;
+    Path prebuiltR8MapPath = null;
+    boolean cwdRelativeSearchPaths = false;
     List<String> searchPaths = AOSP_MAP_SEARCH_PATHS;
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
@@ -922,6 +942,8 @@ public class RetraceWrapper {
         searchPaths = parseSearchPath(args[i]);
       } else if (arg.equals("--print-map-table")) {
         printMappingFileTable = true;
+      } else if (arg.equals("--cwd-relative-search-paths")) {
+        cwdRelativeSearchPaths = true;
       } else if (arg.startsWith("-")) {
         throw error("Unknown option: " + arg);
       } else if (stackTraceFile != null) {
@@ -944,7 +966,7 @@ public class RetraceWrapper {
       if (buildInfo != null) {
         populateRemoteMappingFileMap(buildInfo, tempDir);
       } else {
-        populateLocalMappingFileMap(searchPaths);
+        populateLocalMappingFileMap(prebuiltR8MapPath, searchPaths, cwdRelativeSearchPaths);
       }
       if (printMappingFileTable) {
         List<String> keys = new ArrayList<>(RETRACERS.keySet());
