@@ -77,8 +77,6 @@ public class RetraceWrapper {
               + "'.",
           "other supported <option>s are:",
           "  --print-map-table           # Print the table of identified mapping files and exit.",
-          "  --prebuilts-r8-map-path     # Specify a prebuilt r8.jar.map file path instead of ",
-          "                              # finding this file automatically.",
           "  --cwd-relative-search-paths # When this flag is set, the search paths given in",
           "                              # the --map-search-path flag are assumed to be relative",
           "                              # to the current directory. Otherwise, these paths are",
@@ -699,15 +697,12 @@ public class RetraceWrapper {
   }
 
   private static void populateLocalMappingFileMap(
-      Path prebuiltR8MapPath, List<String> searchPaths, boolean cwdRelativeSearchPaths)
-      throws Exception {
+      List<String> searchPaths, boolean cwdRelativeSearchPaths) throws Exception {
     Path projectRoot = getProjectRoot();
     if (projectRoot == null) {
       return;
     }
-    if (prebuiltR8MapPath == null) {
-      prebuiltR8MapPath = projectRoot.resolve("prebuilts").resolve("r8").resolve("r8.jar.map");
-    }
+    Path prebuiltR8MapPath = projectRoot.resolve("prebuilts").resolve("r8").resolve("r8.jar.map");
     MapInfo prebuiltR8MapInfo = readMapHeaderInfo(prebuiltR8MapPath);
     if (prebuiltR8MapInfo == null) {
       info("Unable to read expected prebuilt R8 map in " + prebuiltR8MapPath);
@@ -901,7 +896,6 @@ public class RetraceWrapper {
     String stackTraceFile = null;
     String defaultMapArg = null;
     boolean printMappingFileTable = false;
-    Path prebuiltR8MapPath = null;
     boolean cwdRelativeSearchPaths = false;
     List<String> searchPaths = AOSP_MAP_SEARCH_PATHS;
     for (int i = 0; i < args.length; i++) {
@@ -966,7 +960,7 @@ public class RetraceWrapper {
       if (buildInfo != null) {
         populateRemoteMappingFileMap(buildInfo, tempDir);
       } else {
-        populateLocalMappingFileMap(prebuiltR8MapPath, searchPaths, cwdRelativeSearchPaths);
+        populateLocalMappingFileMap(searchPaths, cwdRelativeSearchPaths);
       }
       if (printMappingFileTable) {
         List<String> keys = new ArrayList<>(RETRACERS.keySet());
