@@ -82,10 +82,7 @@ public class D8Wrapper {
       return;
     }
     wrapper.applyWrapperArguments(builder);
-    // TODO(b/232073181): Remove this once platform flag is the default.
-    if (!builder.getAndroidPlatformBuild()) {
-      System.setProperty("com.android.tools.r8.disableApiModeling", "1");
-    }
+    R8Wrapper.applyCommonCompilerArguments(builder);
     D8.run(builder.build());
   }
 
@@ -114,9 +111,5 @@ public class D8Wrapper {
 
   private void applyWrapperArguments(D8Command.Builder builder) {
     diagnosticsHandler.setPrintInfoDiagnostics(printInfoDiagnostics);
-    // TODO(b/249230932): Remove once the correct use of platform flag is in place.
-    if (builder.getMinApiLevel() == 10000) {
-      builder.setAndroidPlatformBuild(true);
-    }
   }
 }
