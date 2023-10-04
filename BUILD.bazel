@@ -1,8 +1,9 @@
-# TODO: investigate using the bp2build-converted java_import_host rule defined
-# in Android.bp.
+load("@rules_java//java:defs.bzl", "java_binary")
 
-java_import(
-    name = "r8_jar_import",
-    jars = ["r8.jar"],
+java_binary(
+    name = "r8_binary",
+    main_class = "com.android.tools.r8wrappers.R8Wrapper",
+    target_compatible_with = ["//build/bazel/platforms/os:linux"],
     visibility = ["//visibility:public"],
+    runtime_deps = [":r8lib"],
 )
