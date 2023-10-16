@@ -15,6 +15,7 @@
  */
 package com.android.tools.r8wrappers;
 
+import com.android.tools.r8.BaseCompilerCommand;
 import com.android.tools.r8.CompilationFailedException;
 import com.android.tools.r8.ParseFlagInfo;
 import com.android.tools.r8.ParseFlagPrinter;
@@ -94,11 +95,8 @@ public class R8Wrapper {
       return;
     }
     wrapper.applyWrapperArguments(builder);
+    applyCommonCompilerArguments(builder);
     builder.setEnableExperimentalKeepAnnotations(true);
-    // TODO(b/232073181): Remove this once platform flag is the default.
-    if (!builder.getAndroidPlatformBuild()) {
-      System.setProperty("com.android.tools.r8.disableApiModeling", "1");
-    }
     R8.run(builder.build());
   }
 
@@ -179,10 +177,13 @@ public class R8Wrapper {
     if (useCompatPg) {
       builder.setProguardCompatibility(useCompatPg);
     }
-    // TODO(b/249230932): Remove once the correct use of platform flag is in place.
-    if (builder.getMinApiLevel() == 10000) {
-      builder.setAndroidPlatformBuild(true);
-    }
   }
 
+  /** Utility method to apply platform specific settings to both D8 and R8. */
+  public static void applyCommonCompilerArguments(BaseCompilerCommand.Builder<?, ?> builder) {
+    // TODO(b/232073181): Remove this once platform flag is the default.
+    if (!builder.getAndroidPlatformBuild()) {
+      System.setProperty("com.android.tools.r8.disableApiModeling", "1");
+    }
+  }
 }
