@@ -15,6 +15,8 @@
  */
 package com.android.tools.r8wrappers;
 
+import com.android.tools.r8.ArchiveProtoAndroidResourceConsumer;
+import com.android.tools.r8.ArchiveProtoAndroidResourceProvider;
 import com.android.tools.r8.BaseCompilerCommand;
 import com.android.tools.r8.CompilationFailedException;
 import com.android.tools.r8.ParseFlagInfo;
@@ -23,6 +25,7 @@ import com.android.tools.r8.R8;
 import com.android.tools.r8.R8Command;
 import com.android.tools.r8.Version;
 import com.android.tools.r8.origin.Origin;
+import com.android.tools.r8.origin.PathOrigin;
 import com.android.tools.r8wrappers.utils.DepsFileWriter;
 import com.android.tools.r8wrappers.utils.WrapperDiagnosticsHandler;
 import com.android.tools.r8wrappers.utils.WrapperFlag;
@@ -48,7 +51,9 @@ public class R8Wrapper {
   private static List<ParseFlagInfo> getAdditionalFlagsInfo() {
     return Arrays.asList(
         new WrapperFlag("--deps-file <file>", "Write input dependencies to <file>."),
-        new WrapperFlag("--info", "Print the info-level log messages from the compiler."));
+        new WrapperFlag("--info", "Print the info-level log messages from the compiler."),
+        new WrapperFlag("--resource-input", "Resource input for the resource shrinker."),
+        new WrapperFlag("--resource-output", "Resource shrinker output."));
   }
 
   private static String getUsageMessage() {
@@ -103,6 +108,8 @@ public class R8Wrapper {
   private WrapperDiagnosticsHandler diagnosticsHandler = new WrapperDiagnosticsHandler();
   private boolean useCompatPg = false;
   private Path depsOutput = null;
+  private Path resourceInput = null;
+  private Path resourceOutput = null;
   private final List<String> pgRules = new ArrayList<>();
   private boolean printInfoDiagnostics = false;
 
@@ -114,6 +121,24 @@ public class R8Wrapper {
         case "--info":
           {
             printInfoDiagnostics = true;
+            break;
+          }
+        case "--resource-input":
+          {
+            if (resourceInput != null) {
+              throw new RuntimeException("Only one --resource-input flag accepted");
+            }
+            String nextArg = args[++i];
+            resourceInput = Paths.get(nextArg);
+            break;
+          }
+        case "--resource-output":
+          {
+            if (resourceOutput != null) {
+              throw new RuntimeException("Only one --resource-output flag accepted");
+            }
+            String nextArg = args[++i];
+            resourceOutput = Paths.get(nextArg);
             break;
           }
         case "--deps-file":
@@ -171,6 +196,14 @@ public class R8Wrapper {
       Path target = Files.isDirectory(codeOutput) ? codeOutput.resolve("classes.dex") : codeOutput;
       builder.setInputDependencyGraphConsumer(new DepsFileWriter(target, depsOutput.toString()));
     }
+    if (resourceInput != null && resourceOutput != null) {
+      builder.setAndroidResourceProvider(new ArchiveProtoAndroidResourceProvider(resourceInput,
+          new PathOrigin(resourceInput)));
+      builder.setAndroidResourceConsumer(new ArchiveProtoAndroidResourceConsumer(resourceOutput));
+    } else if (resourceOutput != null || resourceInput != null) {
+      throw new RuntimeException("Both --resource-input and --resource-output must be specified");
+    }
+
     if (!pgRules.isEmpty()) {
       builder.addProguardConfiguration(pgRules, CLI_ORIGIN);
     }
