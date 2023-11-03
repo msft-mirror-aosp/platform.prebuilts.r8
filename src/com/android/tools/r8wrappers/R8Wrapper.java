@@ -15,7 +15,6 @@
  */
 package com.android.tools.r8wrappers;
 
-import com.android.tools.r8.AndroidResourceInput;
 import com.android.tools.r8.ArchiveProtoAndroidResourceConsumer;
 import com.android.tools.r8.ArchiveProtoAndroidResourceProvider;
 import com.android.tools.r8.BaseCompilerCommand;
@@ -24,23 +23,17 @@ import com.android.tools.r8.ParseFlagInfo;
 import com.android.tools.r8.ParseFlagPrinter;
 import com.android.tools.r8.R8;
 import com.android.tools.r8.R8Command;
-import com.android.tools.r8.ResourceException;
-import com.android.tools.r8.ResourcePath;
 import com.android.tools.r8.Version;
 import com.android.tools.r8.origin.Origin;
 import com.android.tools.r8.origin.PathOrigin;
 import com.android.tools.r8wrappers.utils.DepsFileWriter;
 import com.android.tools.r8wrappers.utils.WrapperDiagnosticsHandler;
 import com.android.tools.r8wrappers.utils.WrapperFlag;
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 
 public class R8Wrapper {
@@ -204,7 +197,7 @@ public class R8Wrapper {
       builder.setInputDependencyGraphConsumer(new DepsFileWriter(target, depsOutput.toString()));
     }
     if (resourceInput != null && resourceOutput != null) {
-      builder.setAndroidResourceProvider(new AOSPResourceProvider(resourceInput,
+      builder.setAndroidResourceProvider(new ArchiveProtoAndroidResourceProvider(resourceInput,
           new PathOrigin(resourceInput)));
       builder.setAndroidResourceConsumer(new ArchiveProtoAndroidResourceConsumer(resourceOutput));
     } else if (resourceOutput != null || resourceInput != null) {
@@ -224,54 +217,6 @@ public class R8Wrapper {
     // TODO(b/232073181): Remove this once platform flag is the default.
     if (!builder.getAndroidPlatformBuild()) {
       System.setProperty("com.android.tools.r8.disableApiModeling", "1");
-    }
-  }
-
-  private static class AOSPResourceProvider extends ArchiveProtoAndroidResourceProvider {
-    final String defaultXmlRules = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
-        + "<resources xmlns:tools=\"http://schemas.android.com/tools\"\n"
-        + "    tools:shrinkMode=\"strict\"\n"
-        + "    tools:keep=\"@id/*\"\n"
-        + "/>\n";
-
-    final AndroidResourceInput defaultRules = new AndroidResourceInput() {
-      @Override
-      public ResourcePath getPath() {
-        return new ResourcePath() {
-          @Override
-          public String location() {
-            // Shrinker rules _must_ be in res/raw
-            return "res/raw/asop_default.xml";
-          }
-        };
-      }
-
-      @Override
-      public Kind getKind() {
-        return Kind.XML_FILE;
-      }
-
-      @Override
-      public InputStream getByteStream() throws ResourceException {
-        return new ByteArrayInputStream(defaultXmlRules.getBytes(StandardCharsets.UTF_8));
-      }
-
-      @Override
-      public Origin getOrigin() {
-        return new PathOrigin(Paths.get("R8Wrapper.java"));
-      }
-    };
-
-    public AOSPResourceProvider(Path archive, Origin origin) {
-      super(archive, origin);
-    }
-
-    @Override
-    public Collection<AndroidResourceInput> getAndroidResources() throws ResourceException {
-      ArrayList<AndroidResourceInput> androidResourceInputs = new ArrayList<>(
-          super.getAndroidResources());
-      androidResourceInputs.add(defaultRules);
-      return androidResourceInputs;
     }
   }
 }
