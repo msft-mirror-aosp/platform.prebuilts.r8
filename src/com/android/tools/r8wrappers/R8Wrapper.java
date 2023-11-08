@@ -86,6 +86,8 @@ public class R8Wrapper {
     System.setProperty("com.android.tools.r8.enableSameFilePolicy", "1");
     // Enable experimental -whyareyounotinlining config to aid debugging. See b/277389461.
     System.setProperty("com.android.tools.r8.experimental.enablewhyareyounotinlining", "1");
+    // Allow use of -convertchecknotnull optimization. See b/280633711.
+    System.setProperty("com.android.tools.r8.experimental.enableconvertchecknotnull", "1");
 
     R8Wrapper wrapper = new R8Wrapper();
     String[] remainingArgs = wrapper.parseWrapperArguments(args);
