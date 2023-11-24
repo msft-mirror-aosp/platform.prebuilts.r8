@@ -208,7 +208,8 @@ public class R8Wrapper {
     if (resourceInput != null && resourceOutput != null) {
       builder.setAndroidResourceProvider(new AOSPResourceProvider(resourceInput,
           new PathOrigin(resourceInput)));
-      builder.setAndroidResourceConsumer(new ArchiveProtoAndroidResourceConsumer(resourceOutput));
+      builder.setAndroidResourceConsumer(
+          new ArchiveProtoAndroidResourceConsumer(resourceOutput, resourceInput));
     } else if (resourceOutput != null || resourceInput != null) {
       throw new RuntimeException("Both --resource-input and --resource-output must be specified");
     }
