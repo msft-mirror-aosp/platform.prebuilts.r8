@@ -29,6 +29,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.ProcessBuilder.Redirect;
 import java.net.URISyntaxException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
@@ -62,20 +63,29 @@ public class RetraceWrapper {
           "Usage: retrace [<option>]* [<file>]",
           "where <file> is the file to retrace (default stdin)",
           "and for retracing build server artifacts <option>s are:",
-          "  --bid <build id>         # Build identifier, e.g., 1234 or P1234",
-          "  --target <target>        # Build target name, e.g., coral-userdebug",
-          "  --branch <branch>        # Branch, e.g., master (only needed when bid is not a build"
-              + " number)",
+          "  --bid <build id>            # Build identifier, e.g., 1234 or P1234",
+          "  --target <target>           # Build target name, e.g., coral-userdebug",
+          "  --branch <branch>           # Branch, e.g., master (only needed when bid is not a",
+          "                              # build number)",
           "or for controlling map lookup/location <option>s are:",
-          "  --default-map <file/app> # Default map to retrace lines that don't auto-identify.",
-          "                           # The argument can be a local file or it can be any unique",
-          "                           # substring of a map path found in the map-table.",
-          "  --map-search-path <path> # Path to search for mappings that support auto-identify.",
-          "                           # Separate <path> entries by colon ':'.",
-          "                           # Default '" + String.join(":", AOSP_MAP_SEARCH_PATHS) + "'.",
+          "  --default-map <file/app>    # Default map to retrace lines that don't auto-identify.",
+          "                              # The argument can be a local file or it can be any",
+          "                              # unique substring of a map path found in the map-table.",
+          "  --map-search-path <path>    # Path to search for mappings that support auto-identify.",
+          "                              # Separate <path> entries by colon ':'.",
+          "                              # Default '"
+              + String.join(":", AOSP_MAP_SEARCH_PATHS)
+              + "'.",
           "other supported <option>s are:",
-          "  --print-map-table        # Print the table of identified mapping files and exit.",
-          "  -h, --help               # Print this message.");
+          "  --print-map-table           # Print the table of identified mapping files and exit.",
+          "  --cwd-relative-search-paths # When this flag is set, the search paths given in",
+          "                              # the --map-search-path flag are assumed to be relative",
+          "                              # to the current directory. Otherwise, these paths are",
+          "                              # assumed to be relative to the root of the Android",
+          "                              # checkout.",
+          "  --temp <path>               # Use <path> as the temporary directory without cleanup.",
+          "                              # This will cause build artifacts to be cached in temp.",
+          "  -h, --help                  # Print this message.");
 
   private static class ForwardingDiagnosticsHander implements DiagnosticsHandler {
     @Override
@@ -131,11 +141,14 @@ public class RetraceWrapper {
 
     private final MapInfo mapInfo;
     private final BuildInfo buildInfo;
+    private final String mappingFile;
     private final String zipEntry;
 
-    public RemoteLazyRetracer(MapInfo mapInfo, BuildInfo buildInfo, String zipEntry) {
+    public RemoteLazyRetracer(
+        MapInfo mapInfo, BuildInfo buildInfo, String mappingFile, String zipEntry) {
       this.mapInfo = mapInfo;
       this.buildInfo = buildInfo;
+      this.mappingFile = mappingFile;
       this.zipEntry = zipEntry;
     }
 
@@ -143,15 +156,13 @@ public class RetraceWrapper {
 
     @Override
     public String getMapLocation() {
-      return String.join(
-          " ", fetchArtifactCommand(buildInfo, getMappingFileArtifact(buildInfo), zipEntry));
+      return String.join(" ", fetchArtifactCommand(buildInfo, mappingFile, zipEntry));
     }
 
     @Override
     public Retracer getRetracer(Path tempDir) throws IOException, InterruptedException {
       if (lazyRetracer == null) {
-        Path mapFile =
-            fetchArtifact(buildInfo, getMappingFileArtifact(buildInfo), zipEntry, tempDir);
+        Path mapFile = fetchArtifact(buildInfo, mappingFile, zipEntry, tempDir);
         lazyRetracer =
             Retracer.createDefault(
                 ProguardMapProducer.fromPath(mapFile), new ForwardingDiagnosticsHander());
@@ -171,9 +182,12 @@ public class RetraceWrapper {
       this.branch = branch;
     }
 
-    public String getTargetWithoutBuildType() {
-      int lastDash = target.lastIndexOf('-');
-      return target.substring(0, lastDash);
+    public String getMetaMappingFileSuffix() {
+      return "-proguard-dict-mapping-" + id + ".textproto";
+    }
+
+    public String getMappingFileSuffix() {
+      return "-proguard-dict-" + id + ".zip";
     }
 
     @Override
@@ -689,7 +703,8 @@ public class RetraceWrapper {
             });
   }
 
-  private static void populateLocalMappingFileMap(List<String> searchPaths) throws Exception {
+  private static void populateLocalMappingFileMap(
+      List<String> searchPaths, boolean cwdRelativeSearchPaths) throws Exception {
     Path projectRoot = getProjectRoot();
     if (projectRoot == null) {
       return;
@@ -703,7 +718,12 @@ public class RetraceWrapper {
           prebuiltR8MapInfo.id, new LocalLazyRetracer(prebuiltR8MapInfo, prebuiltR8MapPath));
     }
     for (String path : searchPaths) {
-      Path resolvedPath = projectRoot.resolve(Paths.get(path));
+      Path resolvedPath;
+      if (cwdRelativeSearchPaths) {
+        resolvedPath = Paths.get(path);
+      } else {
+        resolvedPath = projectRoot.resolve(Paths.get(path));
+      }
       if (Files.notExists(resolvedPath)) {
         error("Invalid search path entry: " + resolvedPath);
       }
@@ -743,48 +763,72 @@ public class RetraceWrapper {
     }
   }
 
+  private static List<Path> collectMetaMappingFiles(BuildInfo buildInfo, Path directory)
+      throws IOException {
+    if (!Files.exists(directory)) {
+      return Collections.emptyList();
+    }
+    String suffix = buildInfo.getMetaMappingFileSuffix();
+    try (Stream<Path> stream = Files.walk(directory)) {
+      return stream.filter(p -> p.toString().endsWith(suffix)).collect(Collectors.toList());
+    }
+  }
+
   private static void populateRemoteMappingFileMap(BuildInfo buildInfo, Path tempDir)
       throws IOException, InterruptedException {
-    ensureFetchArtifactCommand();
-    Path mappings = fetchArtifact(buildInfo, getMappingFileMapping(buildInfo), null, tempDir);
-    List<String> lines = Files.readAllLines(mappings);
-    for (int i = 0; i < lines.size(); i++) {
-      String line = lines.get(i).trim();
-      if (line.startsWith("mappings:") && line.endsWith("{")) {
-        String id = null;
-        String location = null;
-        String type = null;
-        int j = i + 1;
-        while (j < lines.size()) {
-          String subline = lines.get(j++).trim();
-          if (subline.startsWith("}")) {
-            break;
+    Path baseDirectory = getTempBuildDirPath(buildInfo, tempDir);
+    List<Path> metaMappings = collectMetaMappingFiles(buildInfo, baseDirectory);
+    if (metaMappings.isEmpty()) {
+      ensureFetchArtifactCommand();
+      ensureTempBuildDir(buildInfo, tempDir);
+      System.out.println("Fetching meta information for mapping files from build server...");
+      fetchArtifactGlob(buildInfo, "**/*" + buildInfo.getMetaMappingFileSuffix(), baseDirectory);
+      metaMappings = collectMetaMappingFiles(buildInfo, baseDirectory);
+      System.out.println("Meta information files found: " + metaMappings.size());
+      System.out.println();
+    }
+    for (Path metaMapping : metaMappings) {
+      List<String> lines = Files.readAllLines(metaMapping);
+      for (int i = 0; i < lines.size(); i++) {
+        String line = lines.get(i).trim();
+        if (line.startsWith("mappings:") && line.endsWith("{")) {
+          String id = null;
+          String location = null;
+          String type = null;
+          int j = i + 1;
+          while (j < lines.size()) {
+            String subline = lines.get(j++).trim();
+            if (subline.startsWith("}")) {
+              break;
+            }
+            if (subline.startsWith("identifier:")) {
+              id = getQuotedString(subline);
+            } else if (subline.startsWith("location:")) {
+              location = getQuotedString(subline);
+            } else if (subline.startsWith("type:")) {
+              type = subline.substring(5).trim();
+            } else {
+              throw error("no match");
+            }
           }
-          if (subline.startsWith("identifier:")) {
-            id = getQuotedString(subline);
-          } else if (subline.startsWith("location:")) {
-            location = getQuotedString(subline);
-          } else if (subline.startsWith("type:")) {
-            type = subline.substring(5).trim();
-          } else {
-            throw error("no match");
-          }
-        }
 
-        if (id != null
-            && location != null
-            && type != null
-            && type.equals("R8")
-            && id.length() == 64) {
-          MapInfo mapInfo = new MapInfo(id, id);
-          RETRACERS.put(id, new RemoteLazyRetracer(mapInfo, buildInfo, location));
-        } else {
-          List<String> message = new ArrayList<>();
-          message.add("Invalid mapping entry starting at line " + i + ":");
-          for (int k = i; k < j; k++) {
-            message.add(lines.get(k));
+          if (id != null
+              && location != null
+              && type != null
+              && type.equals("R8")
+              && id.length() == 64) {
+            MapInfo mapInfo = new MapInfo(id, id);
+            String mappingFile =
+                deriveMappingFileFromMetaMapping(buildInfo, baseDirectory, metaMapping);
+            RETRACERS.put(id, new RemoteLazyRetracer(mapInfo, buildInfo, mappingFile, location));
+          } else {
+            List<String> message = new ArrayList<>();
+            message.add("Invalid mapping entry starting at line " + i + ":");
+            for (int k = i; k < j; k++) {
+              message.add(lines.get(k));
+            }
+            throw error(String.join(System.lineSeparator(), message));
           }
-          throw error(String.join(System.lineSeparator(), message));
         }
       }
     }
@@ -794,15 +838,10 @@ public class RetraceWrapper {
     return line.substring(line.indexOf('"') + 1, line.lastIndexOf('"'));
   }
 
-  private static String getMappingFileMapping(BuildInfo buildInfo) {
-    return buildInfo.getTargetWithoutBuildType()
-        + "-proguard-dict-mapping-"
-        + buildInfo.id
-        + ".textproto";
-  }
-
-  private static String getMappingFileArtifact(BuildInfo buildInfo) {
-    return buildInfo.getTargetWithoutBuildType() + "-proguard-dict-" + buildInfo.id + ".zip";
+  private static String deriveMappingFileFromMetaMapping(
+      BuildInfo buildInfo, Path base, Path metaMapping) {
+    String relative = base.relativize(metaMapping).toString();
+    return relative.replace(buildInfo.getMetaMappingFileSuffix(), buildInfo.getMappingFileSuffix());
   }
 
   private static String readAllLines(InputStream stream) {
@@ -850,10 +889,12 @@ public class RetraceWrapper {
       return outFile;
     }
     List<String> command = fetchArtifactCommand(buildInfo, artifact, entry);
-    Process process = new ProcessBuilder(command).directory(tempDirForBuild.toFile()).start();
+    Process process =
+        new ProcessBuilder(command)
+            .directory(tempDirForBuild.toFile())
+            .redirectError(Redirect.INHERIT)
+            .start();
     process.waitFor();
-    String stderr = readAllLines(process.getErrorStream());
-    String stdout = readAllLines(process.getInputStream());
     if (process.exitValue() == 0) {
       return outFile;
     }
@@ -863,15 +904,38 @@ public class RetraceWrapper {
             "Failed attempt to fetch_artifact.",
             "Command: " + String.join(" ", command),
             "Stdout:",
-            stdout,
-            "Stderr:",
-            stderr));
+            readAllLines(process.getInputStream())));
+  }
+
+  private static void fetchArtifactGlob(BuildInfo buildInfo, String artifact, Path tempDirForBuild)
+      throws IOException, InterruptedException {
+    List<String> command = fetchArtifactCommand(buildInfo, artifact, null);
+    command.add("--preserve_directory_structure");
+    System.out.println(String.join(" ", command));
+    Process process =
+        new ProcessBuilder(command)
+            .directory(tempDirForBuild.toFile())
+            .redirectError(Redirect.INHERIT)
+            .redirectOutput(Redirect.INHERIT)
+            .start();
+    process.waitFor();
+    if (process.exitValue() != 0) {
+      throw error(
+          String.join(
+              System.lineSeparator(),
+              "Failed attempt to fetch_artifact.",
+              "Command: " + String.join(" ", command)));
+    }
+  }
+
+  private static Path getTempBuildDirPath(BuildInfo buildInfo, Path tempDir) {
+    return tempDir.resolve(buildInfo.id + "_" + buildInfo.target);
   }
 
   private static Path ensureTempBuildDir(BuildInfo buildInfo, Path tempDir) throws IOException {
-    Path tempDirForBuild = tempDir.resolve(buildInfo.id + "_" + buildInfo.target);
+    Path tempDirForBuild = getTempBuildDirPath(buildInfo, tempDir);
     if (Files.notExists(tempDirForBuild)) {
-      Files.createDirectory(tempDirForBuild);
+      Files.createDirectories(tempDirForBuild);
     }
     return tempDirForBuild;
   }
@@ -883,6 +947,8 @@ public class RetraceWrapper {
     String stackTraceFile = null;
     String defaultMapArg = null;
     boolean printMappingFileTable = false;
+    boolean cwdRelativeSearchPaths = false;
+    Path userTempDir = null;
     List<String> searchPaths = AOSP_MAP_SEARCH_PATHS;
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
@@ -922,6 +988,14 @@ public class RetraceWrapper {
         searchPaths = parseSearchPath(args[i]);
       } else if (arg.equals("--print-map-table")) {
         printMappingFileTable = true;
+      } else if (arg.equals("--cwd-relative-search-paths")) {
+        cwdRelativeSearchPaths = true;
+      } else if (arg.equals("--temp")) {
+        i++;
+        if (i == args.length) {
+          throw error("No argument given for --temp");
+        }
+        userTempDir = Paths.get(args[i]);
       } else if (arg.startsWith("-")) {
         throw error("Unknown option: " + arg);
       } else if (stackTraceFile != null) {
@@ -939,12 +1013,12 @@ public class RetraceWrapper {
       buildInfo = new BuildInfo(bid, target, branch);
     }
 
-    Path tempDir = Files.createTempDirectory("retrace");
+    Path tempDir = userTempDir != null ? userTempDir : Files.createTempDirectory("retrace");
     try {
       if (buildInfo != null) {
         populateRemoteMappingFileMap(buildInfo, tempDir);
       } else {
-        populateLocalMappingFileMap(searchPaths);
+        populateLocalMappingFileMap(searchPaths, cwdRelativeSearchPaths);
       }
       if (printMappingFileTable) {
         List<String> keys = new ArrayList<>(RETRACERS.keySet());
@@ -974,7 +1048,9 @@ public class RetraceWrapper {
       }
       flushPendingMessages();
     } finally {
-      deleteDirectory(tempDir);
+      if (userTempDir != tempDir) {
+        deleteDirectory(tempDir);
+      }
     }
   }
 
