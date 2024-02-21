@@ -60,7 +60,8 @@ public class R8Wrapper {
         new WrapperFlag("--deps-file <file>", "Write input dependencies to <file>."),
         new WrapperFlag("--info", "Print the info-level log messages from the compiler."),
         new WrapperFlag("--resource-input", "Resource input for the resource shrinker."),
-        new WrapperFlag("--resource-output", "Resource shrinker output."));
+        new WrapperFlag("--resource-output", "Resource shrinker output."),
+        new WrapperFlag("--optimized-resource-shrinking", "Use R8 optimizing resource pipeline."));
   }
 
   private static String getUsageMessage() {
@@ -121,6 +122,7 @@ public class R8Wrapper {
   private Path resourceOutput = null;
   private final List<String> pgRules = new ArrayList<>();
   private boolean printInfoDiagnostics = false;
+  private boolean optimizingResourceShrinking = false;
 
   private String[] parseWrapperArguments(String[] args) {
     List<String> remainingArgs = new ArrayList<>();
@@ -148,6 +150,11 @@ public class R8Wrapper {
             }
             String nextArg = args[++i];
             resourceOutput = Paths.get(nextArg);
+            break;
+          }
+        case "--optimized-resource-shrinking":
+          {
+            optimizingResourceShrinking = true;
             break;
           }
         case "--deps-file":
@@ -210,6 +217,9 @@ public class R8Wrapper {
           new PathOrigin(resourceInput)));
       builder.setAndroidResourceConsumer(
           new ArchiveProtoAndroidResourceConsumer(resourceOutput, resourceInput));
+      if (optimizingResourceShrinking) {
+        builder.setResourceShrinkerConfiguration(b -> b.enableOptimizedShrinkingWithR8().build());
+      }
     } else if (resourceOutput != null || resourceInput != null) {
       throw new RuntimeException("Both --resource-input and --resource-output must be specified");
     }
