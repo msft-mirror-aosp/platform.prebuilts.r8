@@ -85,6 +85,7 @@ java_binary_host {
     name: "extractmarker",
     main_class: "com.android.tools.r8.ExtractMarker",
     static_libs: ["r8lib"],
+    wrapper: "extractmarker.sh",
 }
 
 java_library_host {
@@ -96,6 +97,11 @@ java_library_host {
             enabled: true,
         },
     },
+}
+
+filegroup {
+    name: "r8.jar.map",
+    srcs: ["r8.jar.map"],
 }
 
 java_import_host {

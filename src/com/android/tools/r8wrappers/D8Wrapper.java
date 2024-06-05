@@ -15,6 +15,7 @@
  */
 package com.android.tools.r8wrappers;
 
+import com.android.tools.r8.ArchiveProgramResourceProvider;
 import com.android.tools.r8.CompilationFailedException;
 import com.android.tools.r8.D8;
 import com.android.tools.r8.D8Command;
@@ -24,6 +25,9 @@ import com.android.tools.r8.Version;
 import com.android.tools.r8.origin.Origin;
 import com.android.tools.r8wrappers.utils.WrapperDiagnosticsHandler;
 import com.android.tools.r8wrappers.utils.WrapperFlag;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -40,9 +44,12 @@ public class D8Wrapper {
         }
       };
 
+  private static final String NO_DEX_FLAG = "--no-dex-input-jar";
+  private static final String INFO_FLAG = "--info";
   private static List<ParseFlagInfo> getAdditionalFlagsInfo() {
     return Arrays.asList(
-        new WrapperFlag("--info", "Print the info-level log messages from the compiler."));
+        new WrapperFlag(NO_DEX_FLAG, "Input archive with potential all dex code ignored."),
+        new WrapperFlag(INFO_FLAG, "Print the info-level log messages from the compiler."));
   }
 
   private static String getUsageMessage() {
@@ -82,24 +89,34 @@ public class D8Wrapper {
       return;
     }
     wrapper.applyWrapperArguments(builder);
-    // TODO(b/232073181): Remove this once platform flag is the default.
-    if (!builder.getAndroidPlatformBuild()) {
-      System.setProperty("com.android.tools.r8.disableApiModeling", "1");
-    }
+    R8Wrapper.applyCommonCompilerArguments(builder);
     D8.run(builder.build());
   }
 
   private WrapperDiagnosticsHandler diagnosticsHandler = new WrapperDiagnosticsHandler();
   private boolean printInfoDiagnostics = false;
+  private List<Path> noDexArchives = new ArrayList<>();
 
   private String[] parseWrapperArguments(String[] args) {
     List<String> remainingArgs = new ArrayList<>();
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
       switch (arg) {
-        case "--info":
+        case INFO_FLAG:
           {
             printInfoDiagnostics = true;
+            break;
+          }
+        case NO_DEX_FLAG:
+          {
+            if (++i >= args.length) {
+              throw new RuntimeException("Missing argument to " + NO_DEX_FLAG);
+            }
+            Path path = Paths.get(args[i]);
+            if (!Files.isRegularFile(path)) {
+              throw new RuntimeException("Unexpected argument to " + NO_DEX_FLAG + ". Expected an archive");
+            }
+            noDexArchives.add(path);
             break;
           }
         default:
@@ -113,10 +130,13 @@ public class D8Wrapper {
   }
 
   private void applyWrapperArguments(D8Command.Builder builder) {
+    diagnosticsHandler.setWarnOnUnsupportedMainDexList(true);
     diagnosticsHandler.setPrintInfoDiagnostics(printInfoDiagnostics);
-    // TODO(b/249230932): Remove once the correct use of platform flag is in place.
-    if (builder.getMinApiLevel() == 10000) {
-      builder.setAndroidPlatformBuild(true);
+    for (Path path : noDexArchives) {
+      builder.addProgramResourceProvider(
+          ArchiveProgramResourceProvider.fromArchive(
+              path,
+              ArchiveProgramResourceProvider::includeClassFileEntries));
     }
   }
 }

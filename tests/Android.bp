@@ -24,6 +24,7 @@
 // Rule to dexdump the content of a sample app.
 // The dexdump is used to simulate a raw stack trace from the app.
 package {
+    default_team: "trendy_team_android_developer_tools",
     // See: http://go/android-license-faq
     // A large-scale-change added 'default_applicable_licenses' to import
     // all of the 'license_kinds' from "prebuilts_r8_license"
@@ -36,9 +37,12 @@ genrule {
     name: "r8retrace-dexdump-sample-app",
     out: ["dexdump.txt"],
     srcs: [":HelloActivityWithR8"],
-    tools: ["dexdump", "extractmarker"],
-    cmd: "$(location extractmarker) $(in) > $(out)"
-        + " && $(location dexdump) -d $(in) >> $(out)",
+    tools: [
+        "dexdump",
+        "extractmarker",
+    ],
+    cmd: "$(location extractmarker) $(in) > $(out)" +
+        " && $(location dexdump) -d $(in) >> $(out)",
 }
 
 // Tool and rule to create the raw stack trace from a dexdump.
@@ -60,12 +64,17 @@ genrule {
 genrule {
     name: "r8retrace-run-retrace",
     out: ["retraced-stacktrace.txt"],
-    srcs: [":r8retrace-create-stacktrace", ":HelloActivityWithR8{.proguard_map}"],
     tools: ["retrace"],
-    cmd: "$(location retrace)"
-        + " --map-search-path $(location :HelloActivityWithR8{.proguard_map})"
-        + " $(location :r8retrace-create-stacktrace)"
-        + " > $(out)",
+    tool_files: [
+        ":r8.jar.map",
+        ":r8retrace-create-stacktrace",
+        ":HelloActivityWithR8{.proguard_map}",
+    ],
+    cmd: "$(location retrace)" +
+        " --cwd-relative-search-paths" +
+        " --map-search-path $(location :HelloActivityWithR8{.proguard_map})" +
+        " $(location :r8retrace-create-stacktrace)" +
+        " > $(out)",
 }
 
 // Test checks that the raw and retraced stack traces are as expected.
