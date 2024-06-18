@@ -30,3 +30,9 @@ java_binary(
     visibility = ["//visibility:public"],
     runtime_deps = [":r8"],
 )
+
+filegroup(
+    name = "r8-jar",
+    srcs = ["r8.jar"],
+    visibility = ["//tools/adt/idea/ij-debugger-tests:__pkg__"],
+)
