@@ -100,6 +100,9 @@ public class R8Wrapper {
     // Allow use of -convertchecknotnull optimization. See b/280633711.
     System.setProperty("com.android.tools.r8.experimental.enableconvertchecknotnull", "1");
 
+    // Don't use new synthetic IA structure until suppression landed. See b/359546659.
+    System.setProperty("com.android.tools.r8.legacyNestDesugaringIAClasses", "1");
+
     R8Wrapper wrapper = new R8Wrapper();
     String[] remainingArgs = wrapper.parseWrapperArguments(args);
     if (!wrapper.useCompatPg && !wrapper.noImplicitDefaultInit) {
@@ -269,7 +272,6 @@ public class R8Wrapper {
         return new ResourcePath() {
           @Override
           public String location() {
-            // Shrinker rules _must_ be in res/raw
             return "res/raw/asop_default.xml";
           }
         };
@@ -277,7 +279,7 @@ public class R8Wrapper {
 
       @Override
       public Kind getKind() {
-        return Kind.XML_FILE;
+        return Kind.KEEP_RULE_FILE;
       }
 
       @Override
