@@ -13,6 +13,7 @@ jvm_import(
     name = "r8",
     jars = ["r8.jar"],
     visibility = [
+        "//prebuilts/tools/linux-x86_64/art:__pkg__",
         "//tools/adt/idea/android:__pkg__",
         "//tools/adt/idea/android-kotlin:__pkg__",
         "//tools/adt/idea/ij-debugger-tests:__pkg__",
