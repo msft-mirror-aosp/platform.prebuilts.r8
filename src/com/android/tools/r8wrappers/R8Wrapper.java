@@ -20,6 +20,7 @@ import com.android.tools.r8.ArchiveProtoAndroidResourceConsumer;
 import com.android.tools.r8.ArchiveProtoAndroidResourceProvider;
 import com.android.tools.r8.BaseCompilerCommand;
 import com.android.tools.r8.CompilationFailedException;
+import com.android.tools.r8.DiagnosticsLevel;
 import com.android.tools.r8.ParseFlagInfo;
 import com.android.tools.r8.ParseFlagPrinter;
 import com.android.tools.r8.R8;
@@ -62,6 +63,9 @@ public class R8Wrapper {
         new WrapperFlag("--resource-input", "Resource input for the resource shrinker."),
         new WrapperFlag("--resource-output", "Resource shrinker output."),
         new WrapperFlag("--optimized-resource-shrinking", "Use R8 optimizing resource pipeline."),
+        new WrapperFlag(
+            "--store-store-fence-constructor-inlining",
+            "Use aggressive R8 constructor inlining."),
         new WrapperFlag(
             "--no-implicit-default-init",
             "Disable compat-mode behavior of keeping default constructors in full mode."));
@@ -132,8 +136,11 @@ public class R8Wrapper {
   private Path resourceOutput = null;
   private final List<String> pgRules = new ArrayList<>();
   private boolean printInfoDiagnostics = false;
+  private boolean dontOptimize = false;
   private boolean optimizingResourceShrinking = false;
+  private boolean forceOptimizingResourceShrinking = false;
   private boolean noImplicitDefaultInit = false;
+  private boolean storeStoreFenceConstructorInlining = false;
 
   private String[] parseWrapperArguments(String[] args) {
     List<String> remainingArgs = new ArrayList<>();
@@ -168,6 +175,11 @@ public class R8Wrapper {
             optimizingResourceShrinking = true;
             break;
           }
+        case "--force-optimized-resource-shrinking":
+          {
+            forceOptimizingResourceShrinking = true;
+            break;
+          }
         case "--no-implicit-default-init":
           {
             noImplicitDefaultInit = true;
@@ -192,10 +204,15 @@ public class R8Wrapper {
           }
           // Zero argument PG rules.
         case "-dontshrink":
-        case "-dontoptimize":
         case "-dontobfuscate":
         case "-ignorewarnings":
           {
+            pgRules.add(arg);
+            break;
+          }
+        case "-dontoptimize":
+          {
+            dontOptimize = true;
             pgRules.add(arg);
             break;
           }
@@ -211,6 +228,11 @@ public class R8Wrapper {
             pgRules.add(arg + " " + args[++i]);
             break;
           }
+        case "--store-store-fence-constructor-inlining":
+          {
+            storeStoreFenceConstructorInlining = true;
+            break;
+          }
         default:
           {
             remainingArgs.add(arg);
@@ -223,6 +245,12 @@ public class R8Wrapper {
 
   private void applyWrapperArguments(R8Command.Builder builder) {
     diagnosticsHandler.setPrintInfoDiagnostics(printInfoDiagnostics);
+    // Surface duplicate type warnings for optimized targets where duplicates are more dangerous.
+    // TODO(b/222468116): Bump the level to ERROR for all optimized targets after resolving current
+    // duplicates, and the default level to WARNING.
+    if (!dontOptimize) {
+      diagnosticsHandler.setDuplicateTypesDiagnosticsLevel(DiagnosticsLevel.WARNING);
+    }
     if (depsOutput != null) {
       Path codeOutput = builder.getOutputPath();
       Path target = Files.isDirectory(codeOutput) ? codeOutput.resolve("classes.dex") : codeOutput;
@@ -235,6 +263,12 @@ public class R8Wrapper {
           new ArchiveProtoAndroidResourceConsumer(resourceOutput, resourceInput));
       if (optimizingResourceShrinking) {
         builder.setResourceShrinkerConfiguration(b -> b.enableOptimizedShrinkingWithR8().build());
+        if (!forceOptimizingResourceShrinking) {
+          // TODO(b/372264901): There is a range of test targets that rely on using ids for looking
+          // up ui elements. For now, keep all of these.
+          builder.addProguardConfiguration(List.of("-keep class **.R$id {<fields>;}"),
+              CLI_ORIGIN);
+        }
       }
     } else if (resourceOutput != null || resourceInput != null) {
       throw new RuntimeException("Both --resource-input and --resource-output must be specified");
@@ -245,6 +279,9 @@ public class R8Wrapper {
     }
     if (useCompatPg) {
       builder.setProguardCompatibility(useCompatPg);
+    }
+    if (storeStoreFenceConstructorInlining) {
+      System.setProperty("com.android.tools.r8.enableConstructorInliningWithFinalFields", "1");
     }
   }
 
