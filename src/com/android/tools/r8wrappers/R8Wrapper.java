@@ -130,6 +130,7 @@ public class R8Wrapper {
   }
 
   private WrapperDiagnosticsHandler diagnosticsHandler = new WrapperDiagnosticsHandler();
+  private boolean ignoreLibraryExtendsProgram = false;
   private boolean useCompatPg = false;
   private Path depsOutput = null;
   private Path resourceInput = null;
@@ -137,6 +138,7 @@ public class R8Wrapper {
   private final List<String> pgRules = new ArrayList<>();
   private boolean printInfoDiagnostics = false;
   private boolean dontOptimize = false;
+  private boolean keepRuntimeInvisibleAnnotations = false;
   private boolean optimizingResourceShrinking = false;
   private boolean forceOptimizingResourceShrinking = false;
   private boolean noImplicitDefaultInit = false;
@@ -147,9 +149,19 @@ public class R8Wrapper {
     for (int i = 0; i < args.length; i++) {
       String arg = args[i];
       switch (arg) {
+        case "--ignore-library-extends-program":
+          {
+            ignoreLibraryExtendsProgram = true;
+            break;
+          }
         case "--info":
           {
             printInfoDiagnostics = true;
+            break;
+          }
+        case "--keep-runtime-invisible-annotations":
+          {
+            keepRuntimeInvisibleAnnotations = true;
             break;
           }
         case "--resource-input":
@@ -273,7 +285,17 @@ public class R8Wrapper {
     } else if (resourceOutput != null || resourceInput != null) {
       throw new RuntimeException("Both --resource-input and --resource-output must be specified");
     }
-
+    if (ignoreLibraryExtendsProgram) {
+      System.setProperty("com.android.tools.r8.allowLibraryExtendsProgramInFullMode", "1");
+    }
+    if (keepRuntimeInvisibleAnnotations) {
+      builder.addProguardConfiguration(
+          List.of(
+              "-keepattributes RuntimeInvisibleAnnotations",
+              "-keepattributes RuntimeInvisibleParameterAnnotations",
+              "-keepattributes RuntimeInvisibleTypeAnnotations"),
+          CLI_ORIGIN);
+    }
     if (!pgRules.isEmpty()) {
       builder.addProguardConfiguration(pgRules, CLI_ORIGIN);
     }
